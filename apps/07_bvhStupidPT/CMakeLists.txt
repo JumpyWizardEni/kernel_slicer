@@ -30,8 +30,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -fopenmp")
 add_executable(testapp main.cpp 
                        test_class.cpp 
                        test_class_gpu.cpp
-                       test_class_generated.cpp 
-                       test_class_generated_ds.cpp 
+                       test_class_gpu_rtx.cpp
+                       test_class_generated.cpp
+                       test_class_generated_rtx.cpp
+                       test_class_generated_ds.cpp
+                       test_class_generated_rtx_ds.cpp
                        Bitmap.cpp
                        ../vkfw/vk_utils.cpp
                        ../vkfw/vk_copy.cpp
