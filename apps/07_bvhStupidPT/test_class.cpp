@@ -113,6 +113,9 @@ int TestClass::LoadScene(const char* bvhPath, const char* meshPath)
   m_vNorm4f.resize(m_mesh.vNorm4f.size());
   m_vNorm4f = m_mesh.vNorm4f;
 
+  m_indices.resize(m_mesh.indices.size());
+  m_indices = m_mesh.indices;
+
   return 0;
 
 }

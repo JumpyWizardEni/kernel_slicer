@@ -118,12 +118,13 @@ protected:
   void InitSpheresScene(int a_numSpheres, int a_seed = 0);
 
 //  BVHTree                      m_bvhTree;
-  std::vector<struct BVHNode>  m_nodes;
-  std::vector<struct Interval> m_intervals;
-  std::vector<uint>            m_indicesReordered;
-  SimpleMesh                   m_mesh;
+  std::vector<struct BVHNode>   m_nodes;
+  std::vector<struct Interval>  m_intervals;
+  std::vector<uint>             m_indicesReordered;
+  SimpleMesh                    m_mesh;
   std::vector<LiteMath::float4> m_vPos4f;      // copy from m_mesh
   std::vector<LiteMath::float4> m_vNorm4f;     // copy from m_mesh
+  std::vector<uint>             m_indices;
 
   float4x4                     m_worldViewProjInv;
   std::vector<float4>          spheresPosRadius;

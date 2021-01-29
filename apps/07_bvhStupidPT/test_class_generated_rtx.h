@@ -35,6 +35,8 @@ public:
   PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
 
   uint64_t getBufferDeviceAddress(VkBuffer buffer);
+  VkStridedDeviceAddressRegionKHR getSbtStridedDeviceAddressRegion(VkBuffer buffer, uint32_t handleCount,
+                                                                   uint32_t handleSizeAligned);
 
   TestClass_Generated_RTX() {}
 
@@ -107,6 +109,7 @@ public:
   {
     UpdatePlainMembers(a_pCopyEngine);
     UpdateVectorMembers(a_pCopyEngine);
+    createAccelerationStructures();
   }
 
   virtual void StupidPathTraceCmd(VkCommandBuffer a_commandBuffer, uint tid, uint a_maxDepth, uint* in_pakedXY, float4* out_color);
@@ -133,10 +136,18 @@ public:
   void createShaderBindingTable();
   void createRTXPipeline();
 
+  VkCommandPool    m_commandPool;
+  VkQueue m_queue;
 protected:
 
   AccStructure m_blas{};
   AccStructure m_tlas{};
+
+  VkTransformMatrixKHR m_identityMatrix = {
+      1.0f, 0.0f, 0.0f, 0.0f,
+      0.0f, 1.0f, 0.0f, 0.0f,
+      0.0f, 0.0f, 1.0f, 0.0f
+  };
 
   std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
 
@@ -149,18 +160,28 @@ protected:
 
   struct BindingTables
   {
-    VkBuffer raygenShaderBindingTable = VK_NULL_HANDLE;
-    size_t   raygenOffset = 0;
-    VkBuffer missShaderBindingTable = VK_NULL_HANDLE;
-    size_t   raymissOffset = 0;
-    VkBuffer hitShaderBindingTable = VK_NULL_HANDLE;
-    size_t   rayhitOffset = 0;
+    VkBuffer raygenSBTBuffer = VK_NULL_HANDLE;
+    VkStridedDeviceAddressRegionKHR raygenStridedDeviceAddressRegion;
+    void * raygenMapped = nullptr;
+    size_t raygenOffset = 0;
+
+    VkBuffer raymissSBTBuffer = VK_NULL_HANDLE;
+    VkStridedDeviceAddressRegionKHR raymissStridedDeviceAddressRegion;
+    void * raymissMapped = nullptr;
+    size_t raymissOffset = 0;
+
+    VkBuffer rayhitSBTBuffer = VK_NULL_HANDLE;
+    VkStridedDeviceAddressRegionKHR rayhitStridedDeviceAddressRegion;
+    void * rayhitMapped = nullptr;
+    size_t rayhitOffset = 0;
+
+    VkDeviceMemory memory = VK_NULL_HANDLE;
   } m_tables;
 
   VkPipeline m_RTXpipeline;
   VkPipelineLayout m_RTXpipelineLayout;
   VkDescriptorSetLayout rtxDSLayout = VK_NULL_HANDLE;
-  VkDescriptorSet m_rtxDS[9];
+  VkDescriptorSet m_rtxDS;
   VkDescriptorSetLayout CreateInitRTXDSLayout();
 
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
@@ -260,8 +281,10 @@ protected:
     size_t   m_nodesOffset = 0;
     VkBuffer m_indicesReorderedBuffer = VK_NULL_HANDLE;
     size_t   m_indicesReorderedOffset = 0;
-    VkBuffer instanceBuffer = VK_NULL_HANDLE;
-    size_t   instanceBufferOffset = 0;
+    VkBuffer m_indicesBuffer = VK_NULL_HANDLE;
+    size_t   m_indicesOffset = 0;
+    VkBuffer m_matrixBuffer = VK_NULL_HANDLE;
+    size_t   m_matrixBufferOffset = 0;
     VkDeviceMemory m_vecMem = VK_NULL_HANDLE;
   } m_vdata;
 

@@ -108,6 +108,9 @@ void test_class_gpu_rtx()
   packXYConfig.blockSize[2] = 1;                                                        // !!! USING GENERATED CODE !!!
 
   auto pGPUImpl = std::make_shared<TestClass_Generated_RTX>();                              // !!! USING GENERATED CODE !!!
+  pGPUImpl->m_commandPool = commandPool;
+  pGPUImpl->m_queue = computeQueue;
+
   pGPUImpl->InitVulkanObjects(device, physicalDevice, WIN_WIDTH*WIN_HEIGHT, 256, 1, 1,  // !!! USING GENERATED CODE !!!
                               &packXYConfig, 1);                                        // !!! USING GENERATED CODE !!!
 
@@ -133,8 +136,10 @@ void test_class_gpu_rtx()
 
 //  pGPUImpl->SetVulkanInOutFor_StupidPathTrace(xyBuffer,         0,  // !!! USING GENERATED CODE !!!
 //                                              colorBuffer2,     0); // !!! USING GENERATED CODE !!!
-  pGPUImpl->UpdateAll(pCopyHelper);                                 // !!! USING GENERATED CODE !!!
-  
+  pGPUImpl->UpdateAll(pCopyHelper);
+
+  pGPUImpl->createShaderBindingTable();
+  pGPUImpl->createRTXPipeline();
   // now compute some thing useful
   //
   {
