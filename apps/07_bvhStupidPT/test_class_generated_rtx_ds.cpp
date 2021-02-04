@@ -17,7 +17,7 @@ void TestClass_Generated_RTX::AllocateAllDescriptorSets()
 
   VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {};
   descriptorPoolCreateInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-  descriptorPoolCreateInfo.maxSets       = 9 + 1; // add 1 to prevent zero case
+  descriptorPoolCreateInfo.maxSets       = 10 + 1; // add 1 to prevent zero case
   descriptorPoolCreateInfo.poolSizeCount = 1;
   descriptorPoolCreateInfo.pPoolSizes    = &buffersSize;
   
@@ -25,7 +25,7 @@ void TestClass_Generated_RTX::AllocateAllDescriptorSets()
   
   // allocate all descriptor sets
   //
-  VkDescriptorSetLayout layouts[9] = {};
+  VkDescriptorSetLayout layouts[10] = {};
   layouts[0] = InitAccumDataDSLayout;
   layouts[1] = InitEyeRayDSLayout;
   layouts[2] = RayTraceDSLayout;
@@ -35,15 +35,38 @@ void TestClass_Generated_RTX::AllocateAllDescriptorSets()
   layouts[6] = RayTraceDSLayout;
   layouts[7] = GetMaterialColorDSLayout;
   layouts[8] = PackXYDSLayout;
+  layouts[9] = rtxDSLayout;
 
   VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
   descriptorSetAllocateInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   descriptorSetAllocateInfo.descriptorPool     = m_dsPool;  
-  descriptorSetAllocateInfo.descriptorSetCount = 9;     
+  descriptorSetAllocateInfo.descriptorSetCount = 10;
   descriptorSetAllocateInfo.pSetLayouts        = layouts;
 
   auto tmpRes = vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, m_allGeneratedDS);
   VK_CHECK_RESULT(tmpRes); 
+}
+
+void TestClass_Generated_RTX::InitRTXDS()
+{
+
+  VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo{};
+  descriptorAccelerationStructureInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+  descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
+  descriptorAccelerationStructureInfo.pAccelerationStructures = &m_tlas.handle;
+
+  VkWriteDescriptorSet accelerationStructureWrite{};
+  accelerationStructureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  accelerationStructureWrite.pNext = &descriptorAccelerationStructureInfo;
+  accelerationStructureWrite.dstSet = m_rtxDS;
+  accelerationStructureWrite.dstBinding = 0;
+  accelerationStructureWrite.descriptorCount = 1;
+  accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+
+  std::vector<VkWriteDescriptorSet> writeDescriptorSets = {
+      accelerationStructureWrite
+  };
+  vkUpdateDescriptorSets(device, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, VK_NULL_HANDLE);
 }
 
 void TestClass_Generated_RTX::InitAllGeneratedDescriptorSets_StupidPathTrace()

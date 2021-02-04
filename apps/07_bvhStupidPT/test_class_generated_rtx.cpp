@@ -354,6 +354,27 @@ VkDescriptorSetLayout TestClass_Generated_RTX::CreateRayTraceDSLayout()
   return layout;
 }
 
+VkDescriptorSetLayout TestClass_Generated_RTX::CreateRayTraceDSLayoutRTX()
+{
+  VkDescriptorSetLayoutBinding dsBindings[1] = {};
+
+  // binding for acceleration structure
+  dsBindings[0].binding            = 0;
+  dsBindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+  dsBindings[0].descriptorCount    = 1;
+  dsBindings[0].stageFlags         = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+  dsBindings[0].pImmutableSamplers = nullptr;
+
+  VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {};
+  descriptorSetLayoutCreateInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+  descriptorSetLayoutCreateInfo.bindingCount = uint32_t(1);
+  descriptorSetLayoutCreateInfo.pBindings    = dsBindings;
+
+  VkDescriptorSetLayout layout = nullptr;
+  VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, NULL, &layout));
+  return layout;
+}
+
 VkDescriptorSetLayout TestClass_Generated_RTX::CreateInitEyeRayDSLayout()
 {
   VkDescriptorSetLayoutBinding dsBindings[4+1] = {};
@@ -609,7 +630,7 @@ void TestClass_Generated_RTX::InitKernels(const char* a_filePath, uint32_t a_blo
       m_pMaker->CreateShader(device, a_filePath, &specsForWGSizeExcep, "kernel_RayTrace");
     }    
     
-    RayTraceDSLayout = CreateRayTraceDSLayout();
+    RayTraceDSLayout    = CreateRayTraceDSLayout();
     RayTraceLayout   = m_pMaker->MakeLayout(device, RayTraceDSLayout, 128); // at least 128 bytes for push constants
     RayTracePipeline = m_pMaker->MakePipeline(device);   
   }
@@ -906,7 +927,7 @@ void TestClass_Generated_RTX::InitAccumDataCmd(uint tid, float4* accumColor, flo
 void TestClass_Generated_RTX::RayTraceCmd(uint tid, const float4* rayPosAndNear, float4* rayDirAndFar,
                                 Lite_Hit* out_hit, const uint* indicesReordered, const float4* meshVerts)
 {
-  uint32_t blockSizeX = m_blockSize[0];
+ /* uint32_t blockSizeX = m_blockSize[0];
   uint32_t blockSizeY = m_blockSize[1];
   uint32_t blockSizeZ = m_blockSize[2];
 
@@ -940,9 +961,42 @@ void TestClass_Generated_RTX::RayTraceCmd(uint tid, const float4* rayPosAndNear,
     (tid + blockSizeX - 1) / blockSizeX,
     (1 + blockSizeY - 1) / blockSizeY,
     (1 + blockSizeZ - 1) / blockSizeZ);
+*/
+  const uint32_t handleSizeAligned = vk_utils::Padding(rtxPipelineProperties.shaderGroupHandleSize,
+                                                       rtxPipelineProperties.shaderGroupHandleAlignment);
 
-  VkMemoryBarrier memoryBarrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT };
-  vkCmdPipelineBarrier(m_currCmdBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &memoryBarrier, 0, nullptr, 0, nullptr);  
+  VkStridedDeviceAddressRegionKHR raygenShaderSbtEntry{};
+  raygenShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.raygenSBTBuffer);
+  raygenShaderSbtEntry.stride = handleSizeAligned;
+  raygenShaderSbtEntry.size = handleSizeAligned;
+
+  VkStridedDeviceAddressRegionKHR missShaderSbtEntry{};
+  missShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.raymissSBTBuffer);
+  missShaderSbtEntry.stride = handleSizeAligned;
+  missShaderSbtEntry.size = handleSizeAligned;
+
+  VkStridedDeviceAddressRegionKHR hitShaderSbtEntry{};
+  hitShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.rayhitSBTBuffer);
+  hitShaderSbtEntry.stride = handleSizeAligned;
+  hitShaderSbtEntry.size = handleSizeAligned;
+
+  VkStridedDeviceAddressRegionKHR callableShaderSbtEntry{};
+
+  vkCmdBindPipeline(m_currCmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_RTXpipeline);
+  vkCmdBindDescriptorSets(m_currCmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_RTXpipelineLayout, 0, 1, &m_rtxDS, 0, 0);
+
+  vkCmdTraceRaysKHR(
+      m_currCmdBuffer,
+      &raygenShaderSbtEntry,
+      &missShaderSbtEntry,
+      &hitShaderSbtEntry,
+      &callableShaderSbtEntry,
+      WIN_WIDTH,
+      WIN_HEIGHT,
+      1);
+
+//  VkMemoryBarrier memoryBarrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT };
+//  vkCmdPipelineBarrier(m_currCmdBuffer, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 }
 
 void TestClass_Generated_RTX::InitEyeRayCmd(uint tid, const uint* packedXY, float4* rayPosAndNear, float4* rayDirAndFar)
@@ -1411,10 +1465,13 @@ void TestClass_Generated_RTX::createAccelerationStructures()
 
 void TestClass_Generated_RTX::createRTXPipeline()
 {
+  rtxDSLayout = CreateRayTraceDSLayoutRTX();
+  VkDescriptorSetLayout rtxSets[2] = {RayTraceDSLayout, rtxDSLayout};
+
   VkPipelineLayoutCreateInfo pipelineLayoutCI{};
   pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-  pipelineLayoutCI.setLayoutCount = 1;
-  pipelineLayoutCI.pSetLayouts = &rtxDSLayout;
+  pipelineLayoutCI.setLayoutCount = 2;
+  pipelineLayoutCI.pSetLayouts = rtxSets;
   VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCI, nullptr, &m_RTXpipelineLayout));
 
   std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
@@ -1446,7 +1503,7 @@ void TestClass_Generated_RTX::createRTXPipeline()
     VkPipelineShaderStageCreateInfo stage_info = {};
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
-    auto shaderCode = vk_utils::ReadFile("miss.rmiss.spv");
+    auto shaderCode = vk_utils::ReadFile("raymiss.rmiss.spv");
     VkShaderModule shaderModule = vk_utils::CreateShaderModule(device, shaderCode);
     stage_info.module = shaderModule;
     stage_info.pName  = "main";
@@ -1468,7 +1525,7 @@ void TestClass_Generated_RTX::createRTXPipeline()
     VkPipelineShaderStageCreateInfo stage_info = {};
     stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     stage_info.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-    auto shaderCode = vk_utils::ReadFile("closesthit.rchit.spv");
+    auto shaderCode = vk_utils::ReadFile("rayhit.rchit.spv");
     VkShaderModule shaderModule = vk_utils::CreateShaderModule(device, shaderCode);
     stage_info.module = shaderModule;
     stage_info.pName  = "main";

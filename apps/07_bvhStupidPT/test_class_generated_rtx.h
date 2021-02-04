@@ -129,6 +129,7 @@ public:
                                         uint* out_color);
   virtual void PackXYCmd(uint tidX, uint tidY, uint* out_pakedXY);
 
+  void InitRTXDS();
 
   ScratchBuffer createScratchBuffer(VkDeviceSize size);
   void deleteScratchBuffer(ScratchBuffer& scratchBuffer);
@@ -182,7 +183,7 @@ protected:
   VkPipelineLayout m_RTXpipelineLayout;
   VkDescriptorSetLayout rtxDSLayout = VK_NULL_HANDLE;
   VkDescriptorSet m_rtxDS;
-  VkDescriptorSetLayout CreateInitRTXDSLayout();
+  VkDescriptorSetLayout CreateRayTraceDSLayoutRTX();
 
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
   VkDevice         device         = VK_NULL_HANDLE;

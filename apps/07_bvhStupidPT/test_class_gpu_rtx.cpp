@@ -32,23 +32,7 @@ void test_class_gpu_rtx()
   std::vector<const char*> enabledLayers;
   std::vector<const char*> extensions;
   enabledLayers.push_back("VK_LAYER_KHRONOS_validation");
-  enabledLayers.push_back("VK_LAYER_LUNARG_standard_validation");
-
-  /* ***** RTX ***** */
-  extensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
-  extensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
-
-  // Required by VK_KHR_acceleration_structure
-  extensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
-  extensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
-  extensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
-
-  // Required for VK_KHR_ray_tracing_pipeline
-  extensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
-
-  // Required by VK_KHR_spirv_1_4
-  extensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
-  /* ************** */
+//  enabledLayers.push_back("VK_LAYER_LUNARG_standard_validation");
 
   instance = vk_utils::CreateInstance(enableValidationLayers, enabledLayers, extensions);
 
@@ -72,7 +56,23 @@ void test_class_gpu_rtx()
 //  enabledDeviceFeatures.shaderInt64 = VK_TRUE;
 
   deviceExtensions.push_back("VK_KHR_shader_non_semantic_info");
-  deviceExtensions.push_back("VK_KHR_shader_float16_int8"); 
+  deviceExtensions.push_back("VK_KHR_shader_float16_int8");
+  /* ***** RTX ***** */
+  deviceExtensions.push_back(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME);
+  deviceExtensions.push_back(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME);
+//
+  // Required by VK_KHR_acceleration_structure
+  deviceExtensions.push_back(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
+  deviceExtensions.push_back(VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME);
+  deviceExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+
+  // Required for VK_KHR_ray_tracing_pipeline
+  deviceExtensions.push_back(VK_KHR_SPIRV_1_4_EXTENSION_NAME);
+
+  // Required by VK_KHR_spirv_1_4
+  deviceExtensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
+  /* ************** */
+
 
   fIDs.compute = queueComputeFID;
   device       = vk_utils::CreateLogicalDevice(physicalDevice, validationLayers, deviceExtensions, enabledDeviceFeatures, 
@@ -137,7 +137,7 @@ void test_class_gpu_rtx()
 //  pGPUImpl->SetVulkanInOutFor_StupidPathTrace(xyBuffer,         0,  // !!! USING GENERATED CODE !!!
 //                                              colorBuffer2,     0); // !!! USING GENERATED CODE !!!
   pGPUImpl->UpdateAll(pCopyHelper);
-
+  pGPUImpl->InitRTXDS();
   pGPUImpl->createShaderBindingTable();
   pGPUImpl->createRTXPipeline();
   // now compute some thing useful
@@ -170,48 +170,48 @@ void test_class_gpu_rtx()
     pCopyHelper->ReadBuffer(colorBuffer1, 0, pixelData.data(), pixelData.size()*sizeof(uint32_t));
     SaveBMP("zout_gpu.bmp", pixelData.data(), WIN_WIDTH, WIN_HEIGHT);
 
-    std::cout << "begin path tracing passes ... " << std::endl;
-
-    vkResetCommandBuffer(commandBuffer, 0);
-    vkBeginCommandBuffer(commandBuffer, &beginCommandBufferInfo);
-    pGPUImpl->StupidPathTraceCmd(commandBuffer, WIN_WIDTH*WIN_HEIGHT, 6, nullptr, nullptr);  // !!! USING GENERATED CODE !!! 
-    vkEndCommandBuffer(commandBuffer);  
-    
-    start = std::chrono::high_resolution_clock::now();
-    const int NUM_PASSES = 1000.0f;
-    for(int i=0;i<NUM_PASSES;i++)
-    {
-      vk_utils::ExecuteCommandBufferNow(commandBuffer, computeQueue, device);
-      if(i % 100 == 0)
-      {
-        std::cout << "progress (gpu) = " << 100.0f*float(i)/float(NUM_PASSES) << "% \r";
-        std::cout.flush();
-      }
-    }
-    std::cout << std::endl;
-
-    stop = std::chrono::high_resolution_clock::now();
-    ms   = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count()/1000.f;
-    std::cout << ms << " ms for " << NUM_PASSES << " times of command buffer execution " << std::endl;
-
-    std::vector<float4> pixelsf(WIN_WIDTH*WIN_HEIGHT);
-    pCopyHelper->ReadBuffer(colorBuffer2, 0, pixelsf.data(), pixelsf.size()*sizeof(float4));
-       
-    const float normConst = 1.0f/float(NUM_PASSES);
-    const float invGamma  = 1.0f / 2.2f;
-  
-    for(int i=0;i<WIN_HEIGHT*WIN_HEIGHT;i++)
-    {
-      float4 color = pixelsf[i]*normConst;
-      color.x      = powf(color.x, invGamma);
-      color.y      = powf(color.y, invGamma);
-      color.z      = powf(color.z, invGamma);
-      color.w      = 1.0f;
-      pixelData[i] = RealColorToUint32(clamp(color, 0.0f, 1.0f));
-    }
-    SaveBMP("zout_gpu2.bmp", pixelData.data(), WIN_WIDTH, WIN_HEIGHT);
-
-    std::cout << std::endl;
+//    std::cout << "begin path tracing passes ... " << std::endl;
+//
+//    vkResetCommandBuffer(commandBuffer, 0);
+//    vkBeginCommandBuffer(commandBuffer, &beginCommandBufferInfo);
+//    pGPUImpl->StupidPathTraceCmd(commandBuffer, WIN_WIDTH*WIN_HEIGHT, 6, nullptr, nullptr);  // !!! USING GENERATED CODE !!!
+//    vkEndCommandBuffer(commandBuffer);
+//
+//    start = std::chrono::high_resolution_clock::now();
+//    const int NUM_PASSES = 1000.0f;
+//    for(int i=0;i<NUM_PASSES;i++)
+//    {
+//      vk_utils::ExecuteCommandBufferNow(commandBuffer, computeQueue, device);
+//      if(i % 100 == 0)
+//      {
+//        std::cout << "progress (gpu) = " << 100.0f*float(i)/float(NUM_PASSES) << "% \r";
+//        std::cout.flush();
+//      }
+//    }
+//    std::cout << std::endl;
+//
+//    stop = std::chrono::high_resolution_clock::now();
+//    ms   = std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count()/1000.f;
+//    std::cout << ms << " ms for " << NUM_PASSES << " times of command buffer execution " << std::endl;
+//
+//    std::vector<float4> pixelsf(WIN_WIDTH*WIN_HEIGHT);
+//    pCopyHelper->ReadBuffer(colorBuffer2, 0, pixelsf.data(), pixelsf.size()*sizeof(float4));
+//
+//    const float normConst = 1.0f/float(NUM_PASSES);
+//    const float invGamma  = 1.0f / 2.2f;
+//
+//    for(int i=0;i<WIN_HEIGHT*WIN_HEIGHT;i++)
+//    {
+//      float4 color = pixelsf[i]*normConst;
+//      color.x      = powf(color.x, invGamma);
+//      color.y      = powf(color.y, invGamma);
+//      color.z      = powf(color.z, invGamma);
+//      color.w      = 1.0f;
+//      pixelData[i] = RealColorToUint32(clamp(color, 0.0f, 1.0f));
+//    }
+//    SaveBMP("zout_gpu2.bmp", pixelData.data(), WIN_WIDTH, WIN_HEIGHT);
+//
+//    std::cout << std::endl;
   }
   
   // (6) destroy and free resources before exit
