@@ -83,6 +83,7 @@ public:
     const float4x4 proj = perspectiveMatrix(90.0f, 1.0f, 0.01f, 1000.0f);
     m_worldViewProjInv  = inverse4x4(proj);
     InitSpheresScene(10);
+    LoadScene("lucy.bvh", "lucy.vsgf");
     InitRandomGens(a_maxThreads);
   }
 

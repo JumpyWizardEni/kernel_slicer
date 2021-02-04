@@ -44,11 +44,30 @@ void test_class_gpu_rtx()
   VkPhysicalDeviceShaderFloat16Int8Features features = {};
   features.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES;
   features.shaderInt8 = VK_TRUE;
-  
+
+  VkPhysicalDeviceBufferDeviceAddressFeatures enabledBufferDeviceAddressFeatures{};
+  VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRTXPipelineFeatures{};
+  VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccStructureFeatures{};
+  enabledBufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+  enabledBufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+  enabledBufferDeviceAddressFeatures.pNext = &features;
+
+  enabledRTXPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+  enabledRTXPipelineFeatures.rayTracingPipeline = VK_TRUE;
+  enabledRTXPipelineFeatures.pNext = &enabledBufferDeviceAddressFeatures;
+
+  enabledAccStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+  enabledAccStructureFeatures.accelerationStructure = VK_TRUE;
+  enabledAccStructureFeatures.pNext = &enabledRTXPipelineFeatures;
+
+  VkPhysicalDeviceRayQueryFeaturesKHR rqFeatures = {};
+  rqFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+  rqFeatures.rayQuery = VK_TRUE;
+  rqFeatures.pNext = &enabledAccStructureFeatures;
+
   VkPhysicalDeviceFeatures2 physDevFeatures2 = {};
   physDevFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-  physDevFeatures2.pNext = &features;
-
+  physDevFeatures2.pNext = &rqFeatures;
 
   std::vector<const char*> validationLayers, deviceExtensions;
   VkPhysicalDeviceFeatures enabledDeviceFeatures = {};
@@ -71,8 +90,10 @@ void test_class_gpu_rtx()
 
   // Required by VK_KHR_spirv_1_4
   deviceExtensions.push_back(VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME);
-  /* ************** */
 
+
+  deviceExtensions.push_back(VK_KHR_RAY_QUERY_EXTENSION_NAME);
+  /* ************** */
 
   fIDs.compute = queueComputeFID;
   device       = vk_utils::CreateLogicalDevice(physicalDevice, validationLayers, deviceExtensions, enabledDeviceFeatures, 
@@ -131,15 +152,18 @@ void test_class_gpu_rtx()
   
   pGPUImpl->SetVulkanInOutFor_PackXY(xyBuffer, 0);              // !!! USING GENERATED CODE !!! 
 
-  pGPUImpl->SetVulkanInOutFor_CastSingleRay(xyBuffer, 0,        // !!! USING GENERATED CODE !!!
-                                            colorBuffer1, 0);   // !!! USING GENERATED CODE !!!
+
 
 //  pGPUImpl->SetVulkanInOutFor_StupidPathTrace(xyBuffer,         0,  // !!! USING GENERATED CODE !!!
 //                                              colorBuffer2,     0); // !!! USING GENERATED CODE !!!
   pGPUImpl->UpdateAll(pCopyHelper);
-  pGPUImpl->InitRTXDS();
-  pGPUImpl->createShaderBindingTable();
-  pGPUImpl->createRTXPipeline();
+//  pGPUImpl->InitRTXDS();
+//  pGPUImpl->createRTXPipeline();
+//  pGPUImpl->createShaderBindingTable();
+
+  pGPUImpl->SetVulkanInOutFor_CastSingleRay(xyBuffer, 0,        // !!! USING GENERATED CODE !!!
+                                            colorBuffer1, 0);   // !!! USING GENERATED CODE !!!
+
   // now compute some thing useful
   //
   {

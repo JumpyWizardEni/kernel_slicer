@@ -20,7 +20,7 @@ struct AccStructure
 };
 
 
-class TestClass_Generated_RTX : public TestClass_Generated
+class TestClass_Generated_RTX : public TestClass
 {
 public:
   PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR;
@@ -60,6 +60,7 @@ public:
     InitHelpers();
     InitBuffers(a_maxThreadsCount);
     InitKernels("z_generated.cl.spv", a_blockSizeX, a_blockSizeY, a_blockSizeZ, a_kernelConfigs, a_configSize);
+
     AllocateAllDescriptorSets();
   }
 
@@ -109,7 +110,7 @@ public:
   {
     UpdatePlainMembers(a_pCopyEngine);
     UpdateVectorMembers(a_pCopyEngine);
-    createAccelerationStructures();
+    createAccelerationStructures(a_pCopyEngine);
   }
 
   virtual void StupidPathTraceCmd(VkCommandBuffer a_commandBuffer, uint tid, uint a_maxDepth, uint* in_pakedXY, float4* out_color);
@@ -133,12 +134,13 @@ public:
 
   ScratchBuffer createScratchBuffer(VkDeviceSize size);
   void deleteScratchBuffer(ScratchBuffer& scratchBuffer);
-  void createAccelerationStructures();
+  void createAccelerationStructures(std::shared_ptr<vkfw::ICopyEngine> a_pCopyEngine);
   void createShaderBindingTable();
   void createRTXPipeline();
 
   VkCommandPool    m_commandPool;
   VkQueue m_queue;
+
 protected:
 
   AccStructure m_blas{};
@@ -155,9 +157,7 @@ protected:
   VkPhysicalDeviceRayTracingPipelinePropertiesKHR  rtxPipelineProperties{};
   VkPhysicalDeviceAccelerationStructureFeaturesKHR accStructureFeatures{};
 
-  VkPhysicalDeviceBufferDeviceAddressFeatures enabledBufferDeviceAddressFeatures{};
-  VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRTXPipelineFeatures{};
-  VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccStructureFeatures{};
+
 
   struct BindingTables
   {
@@ -182,7 +182,6 @@ protected:
   VkPipeline m_RTXpipeline;
   VkPipelineLayout m_RTXpipelineLayout;
   VkDescriptorSetLayout rtxDSLayout = VK_NULL_HANDLE;
-  VkDescriptorSet m_rtxDS;
   VkDescriptorSetLayout CreateRayTraceDSLayoutRTX();
 
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
@@ -336,7 +335,7 @@ protected:
   VkDescriptorSetLayout CreatecopyKernelFloatDSLayout();
 
   VkDescriptorPool m_dsPool = VK_NULL_HANDLE;
-  VkDescriptorSet m_allGeneratedDS[9];
+  VkDescriptorSet m_allGeneratedDS[10];
   uint32_t m_blockSize[3];
   std::unordered_map<std::string, KernelConfig> m_kernelExceptions;
 

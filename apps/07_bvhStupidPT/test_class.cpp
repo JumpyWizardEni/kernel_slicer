@@ -419,8 +419,6 @@ void test_class_cpu()
     for(int x=0;x<WIN_WIDTH;x++)
       test.PackXY(x, y, packedXY.data());
   }
-
-  test.LoadScene("lucy.bvh", "lucy.vsgf");
   // test simple ray casting
   //
   for(int i=0;i<WIN_HEIGHT*WIN_HEIGHT;i++)

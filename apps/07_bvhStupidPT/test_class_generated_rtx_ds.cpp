@@ -25,7 +25,7 @@ void TestClass_Generated_RTX::AllocateAllDescriptorSets()
   
   // allocate all descriptor sets
   //
-  VkDescriptorSetLayout layouts[10] = {};
+  VkDescriptorSetLayout layouts[9] = {};
   layouts[0] = InitAccumDataDSLayout;
   layouts[1] = InitEyeRayDSLayout;
   layouts[2] = RayTraceDSLayout;
@@ -35,12 +35,12 @@ void TestClass_Generated_RTX::AllocateAllDescriptorSets()
   layouts[6] = RayTraceDSLayout;
   layouts[7] = GetMaterialColorDSLayout;
   layouts[8] = PackXYDSLayout;
-  layouts[9] = rtxDSLayout;
+//  layouts[9] = rtxDSLayout;
 
   VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
   descriptorSetAllocateInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
   descriptorSetAllocateInfo.descriptorPool     = m_dsPool;  
-  descriptorSetAllocateInfo.descriptorSetCount = 10;
+  descriptorSetAllocateInfo.descriptorSetCount = 9;
   descriptorSetAllocateInfo.pSetLayouts        = layouts;
 
   auto tmpRes = vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, m_allGeneratedDS);
@@ -58,7 +58,7 @@ void TestClass_Generated_RTX::InitRTXDS()
   VkWriteDescriptorSet accelerationStructureWrite{};
   accelerationStructureWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
   accelerationStructureWrite.pNext = &descriptorAccelerationStructureInfo;
-  accelerationStructureWrite.dstSet = m_rtxDS;
+  accelerationStructureWrite.dstSet = m_allGeneratedDS[9];
   accelerationStructureWrite.dstBinding = 0;
   accelerationStructureWrite.descriptorCount = 1;
   accelerationStructureWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
@@ -694,7 +694,7 @@ void TestClass_Generated_RTX::InitAllGeneratedDescriptorSets_CastSingleRay()
   // descriptor set #6: RayTraceCmd (["rayPosAndNear","rayDirAndFar","hit","m_indicesReordered.data()","m_vPos4f.data()","threadFlags","m_intervals","m_nodes"])
   {
     std::vector<VkDescriptorBufferInfo> descriptorBufferInfo(8+1);
-    std::vector<VkWriteDescriptorSet>   writeDescriptorSet(8+1);
+    std::vector<VkWriteDescriptorSet>   writeDescriptorSet(9+1);
 
     descriptorBufferInfo[0]        = VkDescriptorBufferInfo{};
     descriptorBufferInfo[0].buffer = CastSingleRay_local.rayPosAndNearBuffer;
@@ -829,7 +829,23 @@ void TestClass_Generated_RTX::InitAllGeneratedDescriptorSets_CastSingleRay()
     writeDescriptorSet[8].descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writeDescriptorSet[8].pBufferInfo      = &descriptorBufferInfo[8];
     writeDescriptorSet[8].pImageInfo       = nullptr;
-    writeDescriptorSet[8].pTexelBufferView = nullptr; 
+    writeDescriptorSet[8].pTexelBufferView = nullptr;
+
+    VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo{};
+    descriptorAccelerationStructureInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+    descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
+    descriptorAccelerationStructureInfo.pAccelerationStructures = &m_tlas.handle;
+
+    writeDescriptorSet[9]                  = VkWriteDescriptorSet{};
+    writeDescriptorSet[9].sType            = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeDescriptorSet[9].dstSet           = m_allGeneratedDS[6];
+    writeDescriptorSet[9].dstBinding       = 9;
+    writeDescriptorSet[9].descriptorCount  = 1;
+    writeDescriptorSet[9].descriptorType   = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    writeDescriptorSet[9].pBufferInfo      = nullptr;
+    writeDescriptorSet[9].pImageInfo       = nullptr;
+    writeDescriptorSet[9].pTexelBufferView = nullptr;
+    writeDescriptorSet[9].pNext            = &descriptorAccelerationStructureInfo;
    
     vkUpdateDescriptorSets(device, uint32_t(writeDescriptorSet.size()), writeDescriptorSet.data(), 0, NULL);
   }
@@ -911,8 +927,8 @@ void TestClass_Generated_RTX::InitAllGeneratedDescriptorSets_CastSingleRay()
     writeDescriptorSet[4].descriptorType   = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     writeDescriptorSet[4].pBufferInfo      = &descriptorBufferInfo[4];
     writeDescriptorSet[4].pImageInfo       = nullptr;
-    writeDescriptorSet[4].pTexelBufferView = nullptr; 
-   
+    writeDescriptorSet[4].pTexelBufferView = nullptr;
+
     vkUpdateDescriptorSets(device, uint32_t(writeDescriptorSet.size()), writeDescriptorSet.data(), 0, NULL);
   }
 }

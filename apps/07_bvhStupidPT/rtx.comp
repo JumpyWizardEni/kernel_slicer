@@ -1,0 +1,58 @@
+#version 460
+#extension GL_EXT_ray_tracing : enable
+#extension GL_EXT_ray_query : enable
+#extension GL_GOOGLE_include_directive : require
+#include "include/glsl_common.h"
+
+
+layout(binding = 0, set = 0) readonly buffer layout0 { vec4  rayPosAndNear[]; };
+layout(binding = 1, set = 0) readonly buffer layout1 { vec4  rayDirAndFar[]; };
+layout(binding = 2, set = 0) writeonly buffer layout2 { Lite_Hit  out_hit[]; };
+
+layout(binding = 9, set = 0) uniform accelerationStructureEXT topLevelAS;
+
+layout (constant_id = 0) const uint sizex = 512;
+layout (constant_id = 1) const uint sizey = 512;
+layout (constant_id = 2) const uint sizez = 1;
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+void main()
+{
+  uint tid = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+
+	if(tid > 0)
+		return;
+
+	vec4 origin = rayPosAndNear[tid];
+	vec4 direction = rayDirAndFar[tid];
+
+	float tmin = 0.001;
+	float tmax = 10000.0;
+
+	Lite_Hit hitValue;
+  hitValue.t = -1.0f;
+  hitValue.primId = -1;
+  hitValue.instId = -1;
+  hitValue.geomId = -1;
+
+	rayQueryEXT rayQuery;
+	rayQueryInitializeEXT(rayQuery, topLevelAS, gl_RayFlagsOpaqueEXT, 0xFF, origin.xyz, tmin, direction.xyz, tmax);
+
+	// Start traversal, and loop over all ray-scene intersections. When this finishes,
+	// rayQuery stores a "committed" intersection, the closest intersection (if any).
+	while(rayQueryProceedEXT(rayQuery))
+	{
+	}
+
+
+	if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
+	{
+
+		hitValue.primId = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+		hitValue.t = rayQueryGetIntersectionTEXT(rayQuery, true);
+		hitValue.instId = rayQueryGetIntersectionInstanceIdEXT(rayQuery, true);
+	}
+
+	out_hit[tid] = hitValue;
+}
+

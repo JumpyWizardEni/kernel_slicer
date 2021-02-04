@@ -279,7 +279,7 @@ VkDescriptorSetLayout TestClass_Generated_RTX::CreateInitAccumDataDSLayout()
 
 VkDescriptorSetLayout TestClass_Generated_RTX::CreateRayTraceDSLayout()
 {
-  VkDescriptorSetLayoutBinding dsBindings[8+1] = {};
+  VkDescriptorSetLayoutBinding dsBindings[9+1] = {};
   
   // binding for rayPosAndNear
   dsBindings[0].binding            = 0;
@@ -343,10 +343,16 @@ VkDescriptorSetLayout TestClass_Generated_RTX::CreateRayTraceDSLayout()
   dsBindings[8].descriptorCount    = 1;
   dsBindings[8].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
   dsBindings[8].pImmutableSamplers = nullptr;
+
+  dsBindings[9].binding            = 9;
+  dsBindings[9].descriptorType     = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+  dsBindings[9].descriptorCount    = 1;
+  dsBindings[9].stageFlags         = VK_SHADER_STAGE_COMPUTE_BIT;
+  dsBindings[9].pImmutableSamplers = nullptr;
   
   VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {};
   descriptorSetLayoutCreateInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-  descriptorSetLayoutCreateInfo.bindingCount = uint32_t(8+1);
+  descriptorSetLayoutCreateInfo.bindingCount = uint32_t(9+1);
   descriptorSetLayoutCreateInfo.pBindings    = dsBindings;
   
   VkDescriptorSetLayout layout = nullptr;
@@ -359,7 +365,7 @@ VkDescriptorSetLayout TestClass_Generated_RTX::CreateRayTraceDSLayoutRTX()
   VkDescriptorSetLayoutBinding dsBindings[1] = {};
 
   // binding for acceleration structure
-  dsBindings[0].binding            = 0;
+  dsBindings[0].binding            = 9;
   dsBindings[0].descriptorType     = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
   dsBindings[0].descriptorCount    = 1;
   dsBindings[0].stageFlags         = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
@@ -584,22 +590,22 @@ void TestClass_Generated_RTX::InitKernels(const char* a_filePath, uint32_t a_blo
     ContributeToImagePipeline = m_pMaker->MakePipeline(device);   
   }
 
-  {
-    auto ex = m_kernelExceptions.find("kernel_NextBounce");
-    if(ex == m_kernelExceptions.end())
-    {
-      m_pMaker->CreateShader(device, a_filePath, &specsForWGSize, "kernel_NextBounce");
-    }
-    else
-    {
-      specsForWGSizeExcep.pData = ex->second.blockSize;   
-      m_pMaker->CreateShader(device, a_filePath, &specsForWGSizeExcep, "kernel_NextBounce");
-    }    
-    
+//  {
+//    auto ex = m_kernelExceptions.find("kernel_NextBounce");
+//    if(ex == m_kernelExceptions.end())
+//    {
+//      m_pMaker->CreateShader(device, a_filePath, &specsForWGSize, "kernel_NextBounce");
+//    }
+//    else
+//    {
+//      specsForWGSizeExcep.pData = ex->second.blockSize;
+//      m_pMaker->CreateShader(device, a_filePath, &specsForWGSizeExcep, "kernel_NextBounce");
+//    }
+//
     NextBounceDSLayout = CreateNextBounceDSLayout();
-    NextBounceLayout   = m_pMaker->MakeLayout(device, NextBounceDSLayout, 128); // at least 128 bytes for push constants
-    NextBouncePipeline = m_pMaker->MakePipeline(device);   
-  }
+//    NextBounceLayout   = m_pMaker->MakeLayout(device, NextBounceDSLayout, 128); // at least 128 bytes for push constants
+//    NextBouncePipeline = m_pMaker->MakePipeline(device);
+//  }
 
   {
     auto ex = m_kernelExceptions.find("kernel_InitAccumData");
@@ -622,17 +628,18 @@ void TestClass_Generated_RTX::InitKernels(const char* a_filePath, uint32_t a_blo
     auto ex = m_kernelExceptions.find("kernel_RayTrace");
     if(ex == m_kernelExceptions.end())
     {
-      m_pMaker->CreateShader(device, a_filePath, &specsForWGSize, "kernel_RayTrace");
+      m_pMaker->CreateShader(device, "rtx.comp.spv", &specsForWGSize, "main");
     }
     else
     {
-      specsForWGSizeExcep.pData = ex->second.blockSize;   
-      m_pMaker->CreateShader(device, a_filePath, &specsForWGSizeExcep, "kernel_RayTrace");
-    }    
-    
+      specsForWGSizeExcep.pData = ex->second.blockSize;
+      m_pMaker->CreateShader(device, "rtx.comp.spv", &specsForWGSizeExcep, "main");
+    }
+
     RayTraceDSLayout    = CreateRayTraceDSLayout();
+    rtxDSLayout         = CreateRayTraceDSLayoutRTX();
     RayTraceLayout   = m_pMaker->MakeLayout(device, RayTraceDSLayout, 128); // at least 128 bytes for push constants
-    RayTracePipeline = m_pMaker->MakePipeline(device);   
+    RayTracePipeline = m_pMaker->MakePipeline(device);
   }
 
   {
@@ -792,8 +799,8 @@ void TestClass_Generated_RTX::InitMemberBuffers()
   memberVectors.push_back(m_vdata.m_indicesBuffer);
 
   m_vdata.m_matrixBuffer = vkfw::CreateBuffer(device, sizeof(VkTransformMatrixKHR),
-                                              VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
-
+                                              VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+  memberVectors.push_back(m_vdata.m_matrixBuffer);
   if(!memberVectors.empty())
     m_vdata.m_vecMem = vkfw::AllocateAndBindWithPadding(device, physicalDevice, memberVectors);
 //  createScratchBuffer();
@@ -927,17 +934,9 @@ void TestClass_Generated_RTX::InitAccumDataCmd(uint tid, float4* accumColor, flo
 void TestClass_Generated_RTX::RayTraceCmd(uint tid, const float4* rayPosAndNear, float4* rayDirAndFar,
                                 Lite_Hit* out_hit, const uint* indicesReordered, const float4* meshVerts)
 {
- /* uint32_t blockSizeX = m_blockSize[0];
+  uint32_t blockSizeX = m_blockSize[0];
   uint32_t blockSizeY = m_blockSize[1];
   uint32_t blockSizeZ = m_blockSize[2];
-
-  auto ex = m_kernelExceptions.find("kernel_RayTrace");
-  if(ex != m_kernelExceptions.end())
-  {
-    blockSizeX = ex->second.blockSize[0];
-    blockSizeY = ex->second.blockSize[1];
-    blockSizeZ = ex->second.blockSize[2];
-  }
 
   vkCmdBindPipeline(m_currCmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, RayTracePipeline);
   
@@ -961,42 +960,43 @@ void TestClass_Generated_RTX::RayTraceCmd(uint tid, const float4* rayPosAndNear,
     (tid + blockSizeX - 1) / blockSizeX,
     (1 + blockSizeY - 1) / blockSizeY,
     (1 + blockSizeZ - 1) / blockSizeZ);
-*/
-  const uint32_t handleSizeAligned = vk_utils::Padding(rtxPipelineProperties.shaderGroupHandleSize,
-                                                       rtxPipelineProperties.shaderGroupHandleAlignment);
 
-  VkStridedDeviceAddressRegionKHR raygenShaderSbtEntry{};
-  raygenShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.raygenSBTBuffer);
-  raygenShaderSbtEntry.stride = handleSizeAligned;
-  raygenShaderSbtEntry.size = handleSizeAligned;
+//  const uint32_t handleSizeAligned = vk_utils::Padding(rtxPipelineProperties.shaderGroupHandleSize,
+//                                                       rtxPipelineProperties.shaderGroupHandleAlignment);
+//
+//  VkStridedDeviceAddressRegionKHR raygenShaderSbtEntry{};
+//  raygenShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.raygenSBTBuffer);
+//  raygenShaderSbtEntry.stride = handleSizeAligned;
+//  raygenShaderSbtEntry.size = handleSizeAligned;
+//
+//  VkStridedDeviceAddressRegionKHR missShaderSbtEntry{};
+//  missShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.raymissSBTBuffer);
+//  missShaderSbtEntry.stride = handleSizeAligned;
+//  missShaderSbtEntry.size = handleSizeAligned;
+//
+//  VkStridedDeviceAddressRegionKHR hitShaderSbtEntry{};
+//  hitShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.rayhitSBTBuffer);
+//  hitShaderSbtEntry.stride = handleSizeAligned;
+//  hitShaderSbtEntry.size = handleSizeAligned;
+//
+//  VkStridedDeviceAddressRegionKHR callableShaderSbtEntry{};
+//
+//  vkCmdBindPipeline(m_currCmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_RTXpipeline);
+//  vkCmdBindDescriptorSets(m_currCmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_RTXpipelineLayout,
+//                          0, 1, &m_allGeneratedDS[9], 0, 0);
+//
+//  vkCmdTraceRaysKHR(
+//      m_currCmdBuffer,
+//      &raygenShaderSbtEntry,
+//      &missShaderSbtEntry,
+//      &hitShaderSbtEntry,
+//      &callableShaderSbtEntry,
+//      WIN_WIDTH,
+//      WIN_HEIGHT,
+//      1);
 
-  VkStridedDeviceAddressRegionKHR missShaderSbtEntry{};
-  missShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.raymissSBTBuffer);
-  missShaderSbtEntry.stride = handleSizeAligned;
-  missShaderSbtEntry.size = handleSizeAligned;
-
-  VkStridedDeviceAddressRegionKHR hitShaderSbtEntry{};
-  hitShaderSbtEntry.deviceAddress = getBufferDeviceAddress(m_tables.rayhitSBTBuffer);
-  hitShaderSbtEntry.stride = handleSizeAligned;
-  hitShaderSbtEntry.size = handleSizeAligned;
-
-  VkStridedDeviceAddressRegionKHR callableShaderSbtEntry{};
-
-  vkCmdBindPipeline(m_currCmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_RTXpipeline);
-  vkCmdBindDescriptorSets(m_currCmdBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_RTXpipelineLayout, 0, 1, &m_rtxDS, 0, 0);
-
-  vkCmdTraceRaysKHR(
-      m_currCmdBuffer,
-      &raygenShaderSbtEntry,
-      &missShaderSbtEntry,
-      &hitShaderSbtEntry,
-      &callableShaderSbtEntry,
-      WIN_WIDTH,
-      WIN_HEIGHT,
-      1);
-
-//  VkMemoryBarrier memoryBarrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT };
-//  vkCmdPipelineBarrier(m_currCmdBuffer, VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
+  VkMemoryBarrier memoryBarrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT };
+  vkCmdPipelineBarrier(m_currCmdBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
 }
 
 void TestClass_Generated_RTX::InitEyeRayCmd(uint tid, const uint* packedXY, float4* rayPosAndNear, float4* rayDirAndFar)
@@ -1258,12 +1258,11 @@ void TestClass_Generated_RTX::deleteScratchBuffer(ScratchBuffer& scratchBuffer)
   }
 }
 
-void TestClass_Generated_RTX::createAccelerationStructures()
+void TestClass_Generated_RTX::createAccelerationStructures(std::shared_ptr<vkfw::ICopyEngine> a_pCopyEngine)
 {
   VkDeviceOrHostAddressConstKHR vertexBufferDeviceAddress{};
   VkDeviceOrHostAddressConstKHR indexBufferDeviceAddress{};
   VkDeviceOrHostAddressConstKHR transformBufferDeviceAddress{};
-
 
   vertexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(m_vdata.m_vPos4fBuffer);
   indexBufferDeviceAddress.deviceAddress = getBufferDeviceAddress(m_vdata.m_indicesBuffer);
@@ -1277,13 +1276,13 @@ void TestClass_Generated_RTX::createAccelerationStructures()
   accelerationStructureGeometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
   accelerationStructureGeometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32A32_SFLOAT;
   accelerationStructureGeometry.geometry.triangles.vertexData = vertexBufferDeviceAddress;
-  accelerationStructureGeometry.geometry.triangles.maxVertex = 3;
-  accelerationStructureGeometry.geometry.triangles.vertexStride = sizeof(float4);
+  accelerationStructureGeometry.geometry.triangles.maxVertex = m_vPos4f.size() - 1;
+  accelerationStructureGeometry.geometry.triangles.vertexStride = 4 * sizeof(float);
   accelerationStructureGeometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32;
   accelerationStructureGeometry.geometry.triangles.indexData = indexBufferDeviceAddress;
   accelerationStructureGeometry.geometry.triangles.transformData.deviceAddress = 0;
-  accelerationStructureGeometry.geometry.triangles.transformData.hostAddress = nullptr;
-  accelerationStructureGeometry.geometry.triangles.transformData = transformBufferDeviceAddress;
+ // accelerationStructureGeometry.geometry.triangles.transformData.hostAddress = nullptr;
+//  accelerationStructureGeometry.geometry.triangles.transformData = transformBufferDeviceAddress;
 
   // Get size info
   VkAccelerationStructureBuildGeometryInfoKHR accStructureBuildGeometryInfo{};
@@ -1345,14 +1344,19 @@ void TestClass_Generated_RTX::createAccelerationStructures()
   else
   {
     // Acceleration structure needs to be build on the device
-    std::vector<VkCommandBuffer> commandBuffers = vk_utils::CreateCommandBuffers(device, m_commandPool, 1);
-
+    VkCommandBuffer commandBuffer = vk_utils::CreateCommandBuffers(device, m_commandPool, 1)[0];
+    VkCommandBufferBeginInfo beginCommandBufferInfo = {};
+    beginCommandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginCommandBufferInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(commandBuffer, &beginCommandBufferInfo);
     vkCmdBuildAccelerationStructuresKHR(
-        commandBuffers[0],
+        commandBuffer,
         1,
         &accelerationBuildGeometryInfo,
         accelerationBuildStructureRangeInfos.data());
-    vk_utils::ExecuteCommandBufferNow(commandBuffers[0], m_queue, device);
+    vkEndCommandBuffer(commandBuffer);
+    vk_utils::ExecuteCommandBufferNow(commandBuffer, m_queue, device);
+
   }
 
   VkAccelerationStructureDeviceAddressInfoKHR accelerationDeviceAddressInfo{};
@@ -1371,6 +1375,13 @@ void TestClass_Generated_RTX::createAccelerationStructures()
   instance.instanceShaderBindingTableRecordOffset = 0;
   instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
   instance.accelerationStructureReference = m_blas.deviceAddress;
+
+  VkBuffer instanceBuf = vkfw::CreateBuffer(device, sizeof(VkAccelerationStructureInstanceKHR),
+                                            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR);
+
+  std::vector<VkBuffer> tmp = {instanceBuf};
+  vkfw::AllocateAndBindWithPadding(device, physicalDevice, tmp);
+  a_pCopyEngine->UpdateBuffer(instanceBuf, 0, &instance, sizeof(VkAccelerationStructureInstanceKHR));
 
   VkDeviceOrHostAddressConstKHR instanceDataDeviceAddress = transformBufferDeviceAddress;
   //instanceDataDeviceAddress.deviceAddress = getBufferDeviceAddress(m_vdata.m_matrixBuffer);
@@ -1445,14 +1456,19 @@ void TestClass_Generated_RTX::createAccelerationStructures()
   else
   {
     // Acceleration structure needs to be build on the device
-    std::vector<VkCommandBuffer> commandBuffers = vk_utils::CreateCommandBuffers(device, m_commandPool, 1);
-
+    VkCommandBuffer commandBuffer = vk_utils::CreateCommandBuffers(device, m_commandPool, 1)[0];
+    VkCommandBufferBeginInfo beginCommandBufferInfo = {};
+    beginCommandBufferInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginCommandBufferInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(commandBuffer, &beginCommandBufferInfo);
     vkCmdBuildAccelerationStructuresKHR(
-        commandBuffers[0],
+        commandBuffer,
         1,
         &accelerationBuildGeometryInfo,
         accelerationBuildStructureRangeInfos.data());
-    vk_utils::ExecuteCommandBufferNow(commandBuffers[0], m_queue, device);
+    vkEndCommandBuffer(commandBuffer);
+    vk_utils::ExecuteCommandBufferNow(commandBuffer, m_queue, device);
+
   }
 
   accelerationDeviceAddressInfo = {};
@@ -1465,7 +1481,6 @@ void TestClass_Generated_RTX::createAccelerationStructures()
 
 void TestClass_Generated_RTX::createRTXPipeline()
 {
-  rtxDSLayout = CreateRayTraceDSLayoutRTX();
   VkDescriptorSetLayout rtxSets[2] = {RayTraceDSLayout, rtxDSLayout};
 
   VkPipelineLayoutCreateInfo pipelineLayoutCI{};
