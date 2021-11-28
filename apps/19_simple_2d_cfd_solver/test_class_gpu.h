@@ -8,4 +8,7 @@
 #include <vector>
 
 std::vector<float> solve_gpu();
+double randfrom(double min, double max);
+void save_image(const std::string &image_name, std::vector<float> density);
+
 #endif //TEST_TEST_CLASS_GPU_H

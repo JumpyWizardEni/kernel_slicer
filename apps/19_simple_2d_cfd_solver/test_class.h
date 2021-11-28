@@ -34,15 +34,15 @@ public:
 
     void kernel1D_AddSources(int N, float dt_, float *v, const float *v0);
 
-    void kernel1D_Diffuse(int b, float *x, const float *x0, float diffuse);
+    void kernel2D_Diffuse(int h, int w, int b, float *x, const float *x0, float diffuse);
 
-    void kernel1D_Advect(int N, float dt_, int b, float *d, const float *d0, const float *u, const float *v);
+    void kernel2D_Advect(int h, int w, float dt_, int b, float *d, const float *d0, const float *u, const float *v);
 
-    void kernel1D_Project_1(int N, float *u, float *v, float *p, float *div);
+    void kernel2D_Project_1(int h, int w, float *u, float *v, float *p, float *div);
 
-    void kernel1D_Project_2(float *u, float *v, float *p, float *div);
+    void kernel2D_Project_2(int h, int w, float *u, float *v, float *p, float *div);
 
-    void kernel1D_Project_3(int N, float *u, float *v, float *p, float *div);
+    void kernel2D_Project_3(int h, int w, float *u, float *v, float *p, float *div);
 
 };
 
