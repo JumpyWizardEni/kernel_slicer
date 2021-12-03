@@ -12,13 +12,23 @@
 
 #include <algorithm>
 
+#ifdef WIN32
+typedef unsigned int uint;
+#endif
+
 // Just for convenience
 using namespace inja;
 using json = nlohmann::json;
 
 std::string GetFolderPath(const std::string& a_filePath)
 {
-  size_t lastindex = a_filePath.find_last_of("/"); 
+  #ifdef WIN32
+  const std::string slash = "\\";
+  #else
+  const std::string slash = "/";
+  #endif
+
+  size_t lastindex = a_filePath.find_last_of(slash); 
   assert(lastindex != std::string::npos);   
   return a_filePath.substr(0, lastindex); 
 }
@@ -31,6 +41,12 @@ void MakeAbsolutePathRelativeTo(std::string& a_filePath, const std::string& a_fo
 
 void kslicer::PrintVulkanBasicsFile(const std::string& a_declTemplateFilePath, const MainClassInfo& a_classInfo)
 {
+  #ifdef WIN32
+  const std::string slash = "\\";
+  #else
+  const std::string slash = "/";
+  #endif
+
   json data;
   inja::Environment env;
   inja::Template temp = env.parse_template(a_declTemplateFilePath.c_str());
@@ -38,7 +54,7 @@ void kslicer::PrintVulkanBasicsFile(const std::string& a_declTemplateFilePath, c
   
   std::string folderPath = GetFolderPath(a_classInfo.mainClassFileName);
 
-  std::ofstream fout(folderPath + "/vulkan_basics.h");
+  std::ofstream fout(folderPath + slash + "vulkan_basics.h");
   fout << result.c_str() << std::endl;
   fout.close();
 }
@@ -174,11 +190,9 @@ static json PutHierarchyToJson(const kslicer::MainClassInfo::DHierarchy& h, cons
 static json PutHierarchiesDataToJson(const std::unordered_map<std::string, kslicer::MainClassInfo::DHierarchy>& hierarchies, 
                                      const clang::CompilerInstance& compiler)
 {
-  json data;
-  data = std::vector<std::string>();
+  json data = std::vector<std::string>();
   for(const auto& p : hierarchies)
     data.push_back(PutHierarchyToJson(p.second, compiler));
-
   return data;
 }
 
@@ -405,6 +419,36 @@ nlohmann::json kslicer::PrepareJsonForAllCPP(const MainClassInfo& a_classInfo, c
       data["SamplerMembers"].push_back(member.second.name);
   }
 
+  data["Constructors"] = std::vector<std::string>();
+  for(auto ctor : a_classInfo.ctors)
+  {
+    std::string fNameGented = ctor->getNameInfo().getName().getAsString() + "_Generated(";
+    std::string fNameOrigin = ctor->getNameInfo().getName().getAsString() + "(";
+
+    for(unsigned i=0;i<ctor->getNumParams();i++)
+    {
+      auto pParam = ctor->getParamDecl(i);
+      auto qt     = pParam->getType();
+      
+      fNameGented += qt.getAsString() + " " + pParam->getNameAsString();
+      fNameOrigin += pParam->getNameAsString();
+    
+      if(i < ctor->getNumParams()-1)
+      {
+        fNameOrigin += ", ";
+        fNameGented += ", ";
+      }
+    }
+ 
+    fNameOrigin += ")";
+    fNameGented += ")";
+    
+    if(ctor->getNumParams() == 0)
+      data["Constructors"].push_back(fNameGented + " {}");
+    else
+      data["Constructors"].push_back(fNameGented + " : " + fNameOrigin + "{}");
+  }
+
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -596,8 +640,9 @@ nlohmann::json kslicer::PrepareJsonForAllCPP(const MainClassInfo& a_classInfo, c
     {
       const auto pos1 = arg.type.find(std::string("class ")  + a_classInfo.mainClassName);
       const auto pos2 = arg.type.find(std::string("struct ") + a_classInfo.mainClassName);
-      if(arg.isThreadID || arg.isLoopSize || arg.IsUser() ||     // exclude TID and loopSize args bindings
-         pos1 != std::string::npos || pos2 != std::string::npos) // exclude special case of passing MainClass to virtual kernels
+      const auto pos3 = arg.type.find(a_classInfo.mainClassName);
+      if(arg.isThreadID || arg.isLoopSize || arg.IsUser() ||                                  // exclude TID and loopSize args bindings
+         pos1 != std::string::npos || pos2 != std::string::npos || pos3 != std::string::npos) // exclude special case of passing MainClass to virtual kernels
         continue;
       
       json argData;
@@ -805,8 +850,9 @@ nlohmann::json kslicer::PrepareJsonForAllCPP(const MainClassInfo& a_classInfo, c
     for(size_t i=mainFunc.startDSNumber; i<mainFunc.endDSNumber; i++)
     {
       auto& dsArgs               = a_classInfo.allDescriptorSetsInfo[i];
-      const auto pFoundKernel    = a_classInfo.kernels.find(dsArgs.originKernelName);
+      const auto pFoundKernel    = a_classInfo.FindKernelByName(dsArgs.originKernelName);
       const bool handMadeKernels = (pFoundKernel == a_classInfo.kernels.end());
+      const bool isMegaKernel    = handMadeKernels ? false : pFoundKernel->second.isMega;
       
       json local;
       local["Id"]         = i;
@@ -820,10 +866,12 @@ nlohmann::json kslicer::PrepareJsonForAllCPP(const MainClassInfo& a_classInfo, c
       uint32_t realId = 0; 
       for(size_t j=0;j<dsArgs.descriptorSetsInfo.size();j++)
       {
-        if(!handMadeKernels && (pFoundKernel->second.args[j].isThreadID || pFoundKernel->second.args[j].isLoopSize || pFoundKernel->second.args[j].IsUser() ||
-                                dsArgs.descriptorSetsInfo[j].name == "this")) // if this pointer passed to kernel (used for virtual kernels), ignore it because it passe there anyway
+        //#TODO: need to refactor this piece of this
+        //
+        const bool ignoreArg = handMadeKernels ? false : (pFoundKernel->second.args[j].isThreadID || pFoundKernel->second.args[j].isLoopSize || pFoundKernel->second.args[j].IsUser() || dsArgs.descriptorSetsInfo[j].name == "this");
+        if(!handMadeKernels && !isMegaKernel && ignoreArg) // if this pointer passed to kernel (used for virtual kernels), ignore it because it passe there anyway
           continue;
-
+      
         const std::string dsArgName = kslicer::GetDSArgName(mainFunc.Name, dsArgs.descriptorSetsInfo[j], a_classInfo.megakernelRTV);
 
         json arg;
@@ -849,7 +897,7 @@ nlohmann::json kslicer::PrepareJsonForAllCPP(const MainClassInfo& a_classInfo, c
         }
         else if(dsArgs.descriptorSetsInfo[j].isAccelStruct())
         {
-          std::cout << "[kslicer error]: passing acceleration structures to kernel arguments is not yet implemented" << std::endl; 
+          //std::cout << "[kslicer error]: passing acceleration structures to kernel arguments is not yet implemented" << std::endl; 
           data["HasRTXAccelStruct"] = true;
         } 
 
@@ -858,7 +906,7 @@ nlohmann::json kslicer::PrepareJsonForAllCPP(const MainClassInfo& a_classInfo, c
         realId++;
       }
       
-      if(pFoundKernel != a_classInfo.kernels.end())
+      if(pFoundKernel != a_classInfo.kernels.end() && !isMegaKernel)
       {
         for(const auto& container : pFoundKernel->second.usedContainers) // add all class-member vectors bindings
         {
@@ -1007,6 +1055,7 @@ nlohmann::json kslicer::PrepareUBOJson(MainClassInfo& a_classInfo, const std::ve
   data["MainClassName"]   = a_classInfo.mainClassName;
   data["UBOStructFields"] = std::vector<std::string>();
   data["ShaderGLSL"]      = a_classInfo.pShaderCC->IsGLSL();
+  data["Hierarchies"]     = PutHierarchiesDataToJson(a_classInfo.GetDispatchingHierarchies(), compiler);
 
   for(auto member : podMembers)
   {
@@ -1032,15 +1081,15 @@ nlohmann::json kslicer::PrepareUBOJson(MainClassInfo& a_classInfo, const std::ve
       strOut << "dummy" << dummyCounter;
       dummyCounter++;
       sizeO += sizeof(uint32_t);
-      uboField["Type"] = "uint";
-      uboField["Name"] = strOut.str();
+      uboField["Type"]   = "uint";
+      uboField["Name"]   = strOut.str();
+      uboField["IsVec3"] = false;
       data["UBOStructFields"].push_back(uboField);
     }
 
     assert(sizeO == sizeA);
-   
-   data["Hierarchies"] = PutHierarchiesDataToJson(a_classInfo.GetDispatchingHierarchies(), compiler);
   }
+
 
   return data;
 }
@@ -1290,34 +1339,6 @@ json kslicer::PrepareJsonForKernels(MainClassInfo& a_classInfo,
       argj["IsUBO"]      = false;
       args.push_back(argj);
     }
-    
-    std::vector<kslicer::DataMemberInfo> membersToRead;
-    for(const auto& name : k.usedMembers)
-    {
-      auto pCachedMember = dataMembersCached.find(name);
-      if(pCachedMember != dataMembersCached.end())
-        membersToRead.push_back(pCachedMember->second);
-    }
-
-    std::sort(membersToRead.begin(), membersToRead.end(), [](const auto& a, const auto& b) { return a.offsetInTargetBuffer < b.offsetInTargetBuffer; });
-
-    json members = std::vector<std::string>();
-    for(const auto member : membersToRead)
-    {
-      if(member.isArray || member.sizeInBytes > kslicer::READ_BEFORE_USE_THRESHOLD) // read large data structures directly inside kernel code, don't read them at the beggining of kernel.
-        continue;
-      
-      // #TODO: test if remove this is, it works
-      if(k.subjectedToReduction.find(member.name) != k.subjectedToReduction.end())  // exclude this opt for members which subjected to reduction
-        continue;
-      // #TODO: test if remove this is, it works
-
-      json memberData;
-      memberData["Type"]   = pShaderRewriter->RewriteStdVectorTypeStr(member.type);
-      memberData["Name"]   = member.name;
-      memberData["Offset"] = member.offsetInTargetBuffer / sizeof(uint32_t);
-      members.push_back(memberData);
-    }
 
     const auto userArgsArr = GetUserKernelArgs(k.args);
     json userArgs = std::vector<std::string>();
@@ -1386,7 +1407,6 @@ json kslicer::PrepareJsonForKernels(MainClassInfo& a_classInfo,
     kernelJson["Vecs"]       = vecs;
     kernelJson["RTXNames"]   = rtxNames;
     kernelJson["UserArgs"]   = userArgs;
-    kernelJson["Members"]    = members;
     kernelJson["Name"]       = k.name;
     kernelJson["UBOBinding"] = args.size(); // for circle
     kernelJson["HasEpilog"]  = k.isBoolTyped || reductionVars.size() != 0 || reductionArrs.size() != 0 || k.isMaker;
@@ -1666,7 +1686,6 @@ json kslicer::PrepareJsonForKernels(MainClassInfo& a_classInfo,
     {      
       kernelJson["Name"]      = k.name + "_Init";
       kernelJson["Source"]    = k.rewrittenInit.substr(k.rewrittenInit.find_first_of('{')+1);
-      kernelJson["Members"]   = members;
       kernelJson["HasEpilog"] = false;
       kernelJson["FinishRed"] = false;
       kernelJson["InitKPass"] = true;
@@ -1682,7 +1701,6 @@ json kslicer::PrepareJsonForKernels(MainClassInfo& a_classInfo,
     {
       kernelJson["Name"]      = k.name + "_Finish";
       kernelJson["Source"]    = k.rewrittenFinish;
-      kernelJson["Members"]   = members;
       kernelJson["HasEpilog"] = false;
       kernelJson["FinishRed"] = false;
       kernelJson["InitKPass"] = true;

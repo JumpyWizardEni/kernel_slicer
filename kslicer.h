@@ -125,9 +125,9 @@ namespace kslicer
       std::string containerType;
       std::string containerDataType;
 
-      bool IsTexture() const { return isContainer && IsTextureContainer(containerType); }
+      bool IsTexture() const { return (kind == DATA_KIND::KIND_TEXTURE) || (isContainer && IsTextureContainer(containerType)); }
       bool IsPointer() const { return (kind == DATA_KIND::KIND_POINTER); }
-      bool IsUser()    const { return !isThreadID && !isLoopSize && !needFakeOffset && !IsPointer() && !isContainer; }
+      bool IsUser()    const { return !isThreadID && !isLoopSize && !needFakeOffset && !IsPointer() && !IsTexture() && !isContainer; }
     };
 
     struct LoopIter 
@@ -310,6 +310,8 @@ namespace kslicer
     bool isConst     = false;
     bool isThreadId  = false;
     bool isTexture() const { return (kind == DATA_KIND::KIND_TEXTURE); };
+
+    const clang::ParmVarDecl* paramNode = nullptr;
   };
 
   InOutVarInfo GetParamInfo(const clang::ParmVarDecl* currParam);
@@ -430,6 +432,8 @@ namespace kslicer
     uint32_t           order = 0; ///<! to sort them before put in generated kernels source code
     DECL_IN_CLASS      kind  = DECL_IN_CLASS::DECL_UNKNOWN;
     bool               extracted = false;
+    bool               isArray   = false;
+    uint32_t           arraySize = 0;
   };
 
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -456,8 +460,11 @@ namespace kslicer
 
     virtual ~FunctionRewriter(){}
 
-    bool VisitCallExpr(clang::CallExpr* f)                   { return VisitCallExpr_Impl(f); }
-    bool VisitCXXConstructExpr(clang::CXXConstructExpr* call);
+    bool VisitCallExpr(clang::CallExpr* f)                    { return VisitCallExpr_Impl(f); }
+    bool VisitCXXConstructExpr(clang::CXXConstructExpr* call) 
+    { 
+      return VisitCXXConstructExpr_Impl(call);
+    }
 
     bool VisitFunctionDecl(clang::FunctionDecl* fDecl)       { return VisitFunctionDecl_Impl(fDecl); }
     bool VisitCXXMethodDecl(clang::CXXMethodDecl* fDecl)     { return VisitCXXMethodDecl_Impl(fDecl); }
@@ -473,6 +480,7 @@ namespace kslicer
     bool VisitImplicitCastExpr(clang::ImplicitCastExpr* cast){ return VisitImplicitCastExpr_Impl(cast); }
     
     bool VisitArraySubscriptExpr(clang::ArraySubscriptExpr* arrayExpr) { return VisitArraySubscriptExpr_Impl(arrayExpr); }
+    bool VisitUnaryExprOrTypeTraitExpr(clang::UnaryExprOrTypeTraitExpr* szOfExpr) { return VisitUnaryExprOrTypeTraitExpr_Impl(szOfExpr); }
 
     virtual std::string RewriteStdVectorTypeStr(const std::string& a_str) const;
     virtual std::string RewriteImageType(const std::string& a_containerType, const std::string& a_containerDataType, TEX_ACCESS a_accessType, std::string& outImageFormat) const { return "readonly image2D"; }
@@ -499,6 +507,7 @@ namespace kslicer
     std::string FunctionCallRewriteNoName(const clang::CXXConstructExpr* call);
     virtual std::string VectorTypeContructorReplace(const std::string& fname, const std::string& callText);
     
+  public:
     virtual bool VisitFunctionDecl_Impl(clang::FunctionDecl* fDecl)       { return true; } // override this in Derived class
     virtual bool VisitCXXMethodDecl_Impl(clang::CXXMethodDecl* fDecl)     { return true; } // override this in Derived class
 
@@ -511,8 +520,10 @@ namespace kslicer
     virtual bool VisitUnaryOperator_Impl(clang::UnaryOperator* op)        { return true; } // override this in Derived class
     virtual bool VisitCStyleCastExpr_Impl(clang::CStyleCastExpr* cast)    { return true; } // override this in Derived class
     virtual bool VisitImplicitCastExpr_Impl(clang::ImplicitCastExpr* cast){ return true; } // override this in Derived class
+    virtual bool VisitCXXConstructExpr_Impl(clang::CXXConstructExpr* call);                // override this in Derived class
 
     virtual bool VisitArraySubscriptExpr_Impl(clang::ArraySubscriptExpr* arrayExpr) { return true; } 
+    virtual bool VisitUnaryExprOrTypeTraitExpr_Impl(clang::UnaryExprOrTypeTraitExpr* szOfExpr) { return true; }
     virtual bool VisitCallExpr_Impl(clang::CallExpr* f);
 
   };
@@ -537,7 +548,10 @@ namespace kslicer
     bool VisitMemberExpr(clang::MemberExpr* expr)              { if(WasRewritten(expr)) return true; else return VisitMemberExpr_Impl(expr); }
     bool VisitCXXMemberCallExpr(clang::CXXMemberCallExpr* f)   { if(WasRewritten(f)) return true; else return VisitCXXMemberCallExpr_Impl(f); }
     bool VisitCallExpr(clang::CallExpr* f)                     { if(WasRewritten(f)) return true; else return VisitCallExpr_Impl(f); }
-    bool VisitCXXConstructExpr(clang::CXXConstructExpr* call)  { if(WasRewritten(call)) return true; else return VisitCXXConstructExpr_Impl(call); }
+    bool VisitCXXConstructExpr(clang::CXXConstructExpr* call)  
+    { 
+      return VisitCXXConstructExpr_Impl(call); 
+    }
     bool VisitReturnStmt(clang::ReturnStmt* ret)               { if(WasRewritten(ret)) return true; else return VisitReturnStmt_Impl(ret); }
                                                                            
     bool VisitUnaryOperator(clang::UnaryOperator* expr)        { if(WasRewritten(expr)) return true; else return VisitUnaryOperator_Impl(expr);  }                       
@@ -550,6 +564,7 @@ namespace kslicer
     bool VisitDeclRefExpr(clang::DeclRefExpr* expr)                       { if(WasRewritten(expr)) return true; else return VisitDeclRefExpr_Impl(expr); }
     bool VisitDeclStmt(clang::DeclStmt* stmt)                             { if(WasRewritten(stmt)) return true; else return VisitDeclStmt_Impl(stmt); }
     bool VisitArraySubscriptExpr(clang::ArraySubscriptExpr* arrayExpr)    { if(WasRewritten(arrayExpr)) return true; else return VisitArraySubscriptExpr_Impl(arrayExpr);  }
+    bool VisitUnaryExprOrTypeTraitExpr(clang::UnaryExprOrTypeTraitExpr* szOfExpr) { return VisitUnaryExprOrTypeTraitExpr_Impl(szOfExpr); }
 
     bool VisitForStmt(clang::ForStmt* forLoop); ///< to find nodes by their known source range and remember them
 
@@ -569,6 +584,7 @@ namespace kslicer
     virtual std::string VectorTypeContructorReplace(const std::string& fname, const std::string& callText);
     void DetectTextureAccess(clang::CXXOperatorCallExpr* expr);
     void DetectTextureAccess(clang::CXXMemberCallExpr*   call);
+    void DetectTextureAccess(clang::BinaryOperator* expr);
     void ProcessReadWriteTexture(clang::CXXOperatorCallExpr* expr, bool write);
 
     clang::Rewriter&                                         m_rewriter;
@@ -618,6 +634,10 @@ namespace kslicer
     virtual bool VisitDeclRefExpr_Impl(clang::DeclRefExpr* expr)           { return true; } // override this in Derived class
     virtual bool VisitDeclStmt_Impl(clang::DeclStmt* decl)                 { return true; } // override this in Derived class
     virtual bool VisitArraySubscriptExpr_Impl(clang::ArraySubscriptExpr* arrayExpr)  { return true; } // override this in Derived class
+    virtual bool VisitUnaryExprOrTypeTraitExpr_Impl(clang::UnaryExprOrTypeTraitExpr* szOfExpr) { return true; }
+
+    virtual bool NeedToRewriteMemberExpr(const clang::MemberExpr* expr, std::string& out_text);
+
   };
 
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -732,7 +752,12 @@ namespace kslicer
     std::unordered_map<std::string, DataMemberInfo> allDataMembers;   ///<! list of all class data members;
     std::unordered_set<std::string>                 usedServiceCalls; ///<! memcpy, memset and e.t.c.
 
-    std::unordered_map<std::string, KernelInfo> kernels;         ///<! only those kernels which are called from 'Main'/'Control' functions
+    std::unordered_map<std::string, KernelInfo> kernels;            ///<! only those kernels which are called from 'Main'/'Control' functions
+    std::unordered_map<std::string, KernelInfo> megakernelsByName;  ///<! megakernels for RTV pattern
+
+    std::unordered_map<std::string, KernelInfo>::iterator       FindKernelByName(const std::string& a_name);
+    std::unordered_map<std::string, KernelInfo>::const_iterator FindKernelByName(const std::string& a_name) const;
+
     std::vector<std::string>                    indirectKernels; ///<! list of all kernel names which require indirect dispatch; The order is essential because it is used for indirect buffer offsets 
     std::vector<DataMemberInfo>                 dataMembers;     ///<! only those member variables which are referenced from kernels 
     std::vector<MainFuncInfo>                   mainFunc;        ///<! list of all control functions
@@ -741,6 +766,7 @@ namespace kslicer
     std::string mainClassFileName;
     std::string mainClassFileInclude;
     const clang::CXXRecordDecl* mainClassASTNode = nullptr;
+    std::vector<const clang::CXXConstructorDecl* > ctors;
 
     std::vector<std::string> includeToShadersFolders;
     std::vector<std::string> includeCPPFolders;  
@@ -969,6 +995,8 @@ namespace kslicer
   
   DATA_KIND GetKindOfType(const clang::QualType qt, bool isContainer);
   CPP11_ATTR GetMethodAttr(const clang::CXXMethodDecl* f, clang::CompilerInstance& a_compiler);
+
+  KernelInfo::ArgInfo ProcessParameter(const clang::ParmVarDecl *p); 
 }
 
 template <typename Cont, typename Pred>

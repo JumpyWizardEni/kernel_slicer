@@ -13,7 +13,7 @@ void kslicer::SplitContainerTypes(const clang::ClassTemplateSpecializationDecl* 
 }
 
 
-static kslicer::KernelInfo::ArgInfo ProcessParameter(clang::ParmVarDecl *p) 
+kslicer::KernelInfo::ArgInfo kslicer::ProcessParameter(const clang::ParmVarDecl *p) 
 {
   clang::QualType q = p->getType();
 
@@ -77,7 +77,7 @@ void kslicer::InitialPassRecursiveASTVisitor::ProcessKernelDef(const CXXMethodDe
   }
 
   for (unsigned int i = 0; i < f->getNumParams(); ++i) {
-    info.args.push_back(ProcessParameter(f->parameters()[i]));
+    info.args.push_back(kslicer::ProcessParameter(f->parameters()[i]));
   }
 
   if(a_className == MAIN_CLASS_NAME)
@@ -139,6 +139,8 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
       return true;   
   }
 
+  //const clang::QualType qt = 
+
   kslicer::DeclInClass decl;
   if(isa<RecordDecl>(type))
   {
@@ -150,8 +152,14 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
     decl.order     = m_currId;
     decl.kind      = kslicer::DECL_IN_CLASS::DECL_STRUCT;
     decl.extracted = true;
-    m_transferredDecl[decl.name] = decl;
-    m_currId++;
+    
+    if(decl.name != m_codeInfo.mainClassName && 
+       decl.name != std::string("class ") + m_codeInfo.mainClassName && 
+       decl.name != std::string("struct ") + m_codeInfo.mainClassName)
+    {
+      m_transferredDecl[decl.name] = decl;
+      m_currId++;
+    }
   }
   else if(isa<TypedefDecl>(type))
   {
@@ -198,12 +206,13 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitVarDecl(VarDecl* pTargetVar)
   if(!NeedToProcessDeclInFile(FileName))
     return true;
 
-  kslicer::DeclInClass decl;
+  const clang::QualType qt = pTargetVar->getType();
 
+  kslicer::DeclInClass decl;
   if(pTargetVar->isConstexpr())
   {
     decl.name      = pTargetVar->getNameAsString();
-    decl.type      = pTargetVar->getType().getAsString(); 
+    decl.type      = qt.getAsString(); 
     auto posOfDD = decl.type.find("::");
     if(posOfDD != std::string::npos)
       decl.type = decl.type.substr(posOfDD+2);
@@ -213,6 +222,19 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitVarDecl(VarDecl* pTargetVar)
     decl.order     = m_currId;
     decl.kind      = kslicer::DECL_IN_CLASS::DECL_CONSTANT;
     decl.extracted = true;
+
+    if(qt->isConstantArrayType())
+    {
+      auto arrayType = dyn_cast<ConstantArrayType>(qt.getTypePtr()); 
+      assert(arrayType != nullptr);
+      QualType qtOfElem = arrayType->getElementType(); 
+      decl.isArray   = true;
+      decl.arraySize = arrayType->getSize().getLimitedValue();      
+      decl.type      = qtOfElem.getAsString();
+      //auto typeInfo2 = m_astContext.getTypeInfo(qtOfElem);
+      //varInfo.sizeInBytesOfArrayElement = typeInfo2.Width / 8;
+    }
+
     m_transferredDecl[decl.name] = decl;
     m_currId++;
   }
@@ -265,12 +287,21 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitCXXMethodDecl(CXXMethodDecl* 
 
     auto attr = kslicer::GetMethodAttr(f, m_compiler);
 
-    if(m_codeInfo.IsKernel(fname)) // || attr == CPP11_ATTR::ATTR_KERNEL // TODO: fix this
+    if(m_codeInfo.IsKernel(fname)) // 
     {
-      if(thisTypeName == std::string("class ") + MAIN_CLASS_NAME || thisTypeName == std::string("struct ") + MAIN_CLASS_NAME)
+      if(thisTypeName == std::string("class ") + MAIN_CLASS_NAME || thisTypeName == std::string("struct ") + MAIN_CLASS_NAME || thisTypeName == MAIN_CLASS_NAME)
       {
         ProcessKernelDef(f, functions, MAIN_CLASS_NAME); // MAIN_CLASS_NAME::f ==> functions
         std::cout << "  found member kernel " << MAIN_CLASS_NAME.c_str() << "::" << fname.c_str() << std::endl;
+        if(ctors.size() == 0)
+        {
+          clang::CXXRecordDecl* pClasDecl =	f->getParent();
+          for(auto ctor : pClasDecl->ctors()) 
+          {
+            if(!ctor->isCopyOrMoveConstructor())
+              ctors.push_back(ctor);
+          }
+        }
       }
       else // extract other kernels and classes
       {

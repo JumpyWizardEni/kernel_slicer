@@ -45,9 +45,11 @@ using namespace clang;
 #include "template_rendering.h"
 
 #ifdef WIN32
+  #include <windows.h>    // for GetCurrentDirectoryW
   #include <direct.h>     // for windows mkdir
 #else
   #include <sys/stat.h>   // for linux mkdir
+  #include <unistd.h>     // for getcwd
 #endif
 
 using kslicer::KernelInfo;
@@ -200,7 +202,7 @@ public:
                           const clang::Module *Imported,
                           clang::SrcMgr::CharacteristicKind FileType) override
   {
-    if(!IsAngled)
+    if(!IsAngled && File != nullptr)
     {
       assert(File != nullptr);
       std::string filename = std::string(RelativePath.begin(), RelativePath.end()); 
@@ -260,6 +262,18 @@ void ReadThreadsOrderFromStr(const std::string& threadsOrderStr, uint32_t  threa
 
 int main(int argc, const char **argv)
 {
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  #ifdef WIN32
+  wchar_t NPath[512];
+  GetCurrentDirectoryW(512, NPath);
+  std::wcout << L"[main]: curr_dir = " << NPath << std::endl;
+  #else
+  char cwd[1024];
+  if (getcwd(cwd, sizeof(cwd)) != nullptr)
+    std::cout << "[main]: curr_dir = " << cwd << std::endl;
+  #endif
+  ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
   struct stat sb;
 
   if (argc < 2)
@@ -350,11 +364,23 @@ int main(int argc, const char **argv)
   llvm::ArrayRef<const char*> args(argsForClang.data(), argsForClang.data() + argsForClang.size());
 
   // Make sure it exists
+  #ifndef WIN32
   if (stat(fileName.c_str(), &sb) == -1)
   {
     std::cout << "[main]: error, input file " << fileName.c_str() << " not found!" << std::endl;
     return 0;
   }
+  #else
+  {
+    std::ifstream fin(fileName.c_str());
+    if(!fin.is_open())
+    {
+      std::cout << "[main]: error, input file " << fileName.c_str() << " not found!" << std::endl;
+      return 0;
+    }
+    fin.close();
+  }
+  #endif
 
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -466,9 +492,10 @@ int main(int argc, const char **argv)
   int argSize = argv2.size();
 
   llvm::cl::OptionCategory GDOpts("global-detect options");
-  clang::tooling::CommonOptionsParser OptionsParser(argSize, argv2.data(), GDOpts);
-  clang::tooling::ClangTool Tool(OptionsParser.getCompilations(), OptionsParser.getSourcePathList());
-
+  clang::tooling::CommonOptionsParser OptionsParser(argSize, argv2.data(), GDOpts);                         // clang 12
+  clang::tooling::ClangTool Tool(OptionsParser.getCompilations(), OptionsParser.getSourcePathList());       // clang 12
+  //auto OptionsParser = clang::tooling::CommonOptionsParser::create(argSize, argv2.data(), GDOpts);        // clang 14
+  //clang::tooling::ClangTool Tool(OptionsParser->getCompilations(), OptionsParser->getSourcePathList());   // clang 14
 
   // (0) find all "Main" functions, a functions which call kernels. Kernels are also listed for each mainFunc;
   //
@@ -510,6 +537,7 @@ int main(int argc, const char **argv)
   inputCodeInfo.allDataMembers       = firstPassData.rv.dataMembers;   
   inputCodeInfo.mainClassFileInclude = firstPassData.rv.MAIN_FILE_INCLUDE;
   inputCodeInfo.mainClassASTNode     = firstPassData.rv.m_mainClassASTNode;
+  inputCodeInfo.ctors                = firstPassData.rv.ctors;
   inputCodeInfo.ProcessAllSetters(firstPassData.rv.m_setters, compiler);
 
   std::vector<kslicer::DeclInClass> generalDecls = firstPassData.rv.GetExtractedDecls();
@@ -846,7 +874,7 @@ int main(int argc, const char **argv)
     kernel.warpSize = warpSize;
   }
  
-  std::unordered_map<std::string, KernelInfo> megakernelsByName;
+  auto& megakernelsByName = inputCodeInfo.megakernelsByName;
   if(inputCodeInfo.megakernelRTV) // join all kernels in one for each CF
   {
     for(auto& cf : inputCodeInfo.mainFunc)
@@ -986,9 +1014,30 @@ int main(int argc, const char **argv)
 
   // finally generate kernels
   //
-  generalDecls.insert( generalDecls.end(), usedDecls.begin(), usedDecls.end());
+  // generalDecls.insert( generalDecls.end(), usedDecls.begin(), usedDecls.end());
+  {
+    for(const auto& usedDecl : usedDecls)
+    {
+      bool found = false;
+      for(const auto& currDecl : generalDecls)
+      {
+        if(currDecl.name == usedDecl.name)
+        {
+          found = true;
+          break;
+        }
+      }
+      if(!found)
+        generalDecls.push_back(usedDecl);
+    }
+  }
+  
   auto json = kslicer::PrepareJsonForKernels(inputCodeInfo, usedByKernelsFunctions, generalDecls, compiler, threadsOrder, uboIncludeName, jsonUBO);
   inputCodeInfo.pShaderCC->GenerateShaders(json, &inputCodeInfo);
+
+  //std::ofstream file(GetFolderPath(inputCodeInfo.mainClassFileName) + "/z_ubo.json");
+  //file << std::setw(2) << json; //
+  //file.close();
 
   {
     std::string rawname        = GetFolderPath(inputCodeInfo.mainClassFileName);
@@ -1001,8 +1050,5 @@ int main(int argc, const char **argv)
   
   kslicer::ApplyJsonToTemplate("templates/ubo_def.h",  uboOutName, jsonUBO); // need to call it after "GenerateShaders"
 
-  //std::ofstream file(GetFolderPath(inputCodeInfo.mainClassFileName) + "/z_kernels.json");
-  //file << std::setw(2) << json; //
-  //file.close();
   return 0;
 }

@@ -92,7 +92,7 @@
                         "-pattern", "rtv", 
                         "-I${workspaceFolder}/apps/LiteMath", "IncludeToShaders", 
                         "-shaderCC", "glsl",
-                        "-megakernel", "0",
+                        "-megakernel", "1",
                         "-DKERNEL_SLICER",
                         "-v"],
             "stopAtEntry"    : false,
@@ -336,7 +336,7 @@
                         "-shaderCC", "glsl",
                         "-I${workspaceFolder}/apps/LiteMath",   "IncludeToShaders",
                         "-I${workspaceFolder}/apps/RayTracing", "ExcludeFromShaders",
-                        "-megakernel", "0",
+                        "-megakernel", "1",
                         //"-cl-std=", "C++",
                         "-DKERNEL_SLICER",
                         "-v"],
@@ -773,6 +773,34 @@
                 }
             ]
         },
+
+        {
+            "name"   : "Launch (app_19_2dsolver/GLSL)",
+            "type"   : "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake-build-debug/kslicer",
+            "args"   : ["${workspaceFolder}/apps/19_simple_2d_cfd_solver/test_class.cpp",
+                        "-mainClass", "Solver", 
+                        "-stdlibfolder", "${workspaceFolder}/TINYSTL",
+                        "-pattern", "ipv",
+                        "-shaderCC", "glsl",
+                        "-I${workspaceFolder}/apps/LiteMath",   "IncludeToShaders",
+                        "-DKERNEL_SLICER",
+                        "-v"],
+            "stopAtEntry": false,
+            "cwd"    : "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+
         {
             "name"   : "Launch (test_004/clspv)",
             "type"   : "cppdbg",
@@ -852,5 +880,34 @@
             ]
         },
 
+        {
+            "name"   : "Launch (msu/vk_graphics_rt)",
+            "type"   : "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/cmake-build-debug/kslicer",
+            "args"   : ["${workspaceFolder}/../msu-graphics-group/vk_graphics_rt/src/samples/raytracing/raytracing.cpp",
+                        "-mainClass", "RayTracer", 
+                        "-stdlibfolder", "${workspaceFolder}/TINYSTL",
+                        "-pattern", "rtv",
+                        "-shaderCC", "glsl",
+                        "-I${workspaceFolder}/apps/LiteMath",   "IncludeToShaders",
+                        "-I${workspaceFolder}/apps/RayTracing", "ExcludeFromShaders",
+                        "-I/home/frol/PROG/msu-graphics-group/vk_graphics_rt/src", "ExcludeFromShaders",
+                        "-megakernel", "1",
+                        "-DKERNEL_SLICER",
+                        "-v"],
+            "stopAtEntry": false,
+            "cwd"    : "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
     ]
 }

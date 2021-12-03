@@ -23,7 +23,10 @@ static uint32_t ComputeReductionAuxBufferElements(uint32_t whole_size, uint32_t 
 {{MainClassName}}_Generated::~{{MainClassName}}_Generated()
 {
   m_pMaker = nullptr;
-
+  {% if UseServiceMemCopy %}
+  vkDestroyPipeline(device, copyKernelFloatPipeline, nullptr);
+  vkDestroyPipelineLayout(device, copyKernelFloatLayout, nullptr);
+  {% endif %} {# /* UseServiceMemCopy */ #}
 ## for Kernel in Kernels
   vkDestroyDescriptorSetLayout(device, {{Kernel.Name}}DSLayout, nullptr);
   {{Kernel.Name}}DSLayout = VK_NULL_HANDLE;
@@ -252,9 +255,9 @@ VkBufferMemoryBarrier {{MainClassName}}_Generated::BarrierForObjCounters(VkBuffe
 void {{MainClassName}}_Generated::InitKernel_{{Kernel.Name}}(const char* a_filePath)
 {
   {% if MultipleSourceShaders %}
-  std::string shaderPath = "{{ShaderFolder}}/{{Kernel.OriginalName}}.comp.spv"; 
+  std::string shaderPath = AlterShaderPath("{{ShaderFolder}}/{{Kernel.OriginalName}}.comp.spv"); 
   {% else %}
-  std::string shaderPath = a_filePath; 
+  std::string shaderPath = AlterShaderPath(a_filePath); 
   {% endif %}
   
   {% if Kernel.IsVirtual and Kernel.Hierarchy.IndirectDispatch %}
@@ -276,7 +279,7 @@ void {{MainClassName}}_Generated::InitKernel_{{Kernel.Name}}(const char* a_fileP
   {% if Kernel.FinishRed %}
   
   {% if ShaderGLSL %}
-  shaderPath = "{{ShaderFolder}}/{{Kernel.OriginalName}}_Reduction.comp.spv";
+  shaderPath = AlterShaderPath("{{ShaderFolder}}/{{Kernel.OriginalName}}_Reduction.comp.spv");
   {% endif %}
   {% if UseSpecConstWgSize %}
   {
@@ -292,19 +295,19 @@ void {{MainClassName}}_Generated::InitKernel_{{Kernel.Name}}(const char* a_fileP
   {% if Kernel.HasLoopInit %}
   
   {% if ShaderGLSL %}
-  shaderPath = "{{ShaderFolder}}/{{Kernel.OriginalName}}_Init.comp.spv";
+  shaderPath = AlterShaderPath("{{ShaderFolder}}/{{Kernel.OriginalName}}_Init.comp.spv");
   {% endif %}
   m_pMaker->LoadShader(device, shaderPath.c_str(), nullptr, {% if ShaderGLSL %}"main"{% else %}"{{Kernel.OriginalName}}_Init"{% endif %}); 
   {{Kernel.Name}}InitPipeline = m_pMaker->MakePipeline(device);
+  {% endif %} {# /* if Kernel.HasLoopInit */ #} 
   {% if Kernel.HasLoopFinish %}
   
   {% if ShaderGLSL %}
-  shaderPath = "{{ShaderFolder}}/{{Kernel.OriginalName}}_Finish.comp.spv";
+  shaderPath = AlterShaderPath("{{ShaderFolder}}/{{Kernel.OriginalName}}_Finish.comp.spv");
   {% endif %}
   m_pMaker->LoadShader(device, shaderPath.c_str(), nullptr, {% if ShaderGLSL %}"main"{% else %}"{{Kernel.OriginalName}}_Finish"{% endif %});
   {{Kernel.Name}}FinishPipeline = m_pMaker->MakePipeline(device);
-  {% endif %}
-  {% endif %} 
+  {% endif %} {# /* if Kernel.HasLoopFinish */ #} 
   {% if Kernel.IsMaker and Kernel.Hierarchy.IndirectDispatch %}
   
   {% if UseSpecConstWgSize %}

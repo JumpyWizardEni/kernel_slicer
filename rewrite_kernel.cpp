@@ -82,14 +82,115 @@ bool kslicer::CheckSettersAccess(const clang::MemberExpr* expr, const MainClassI
   auto p = a_codeInfo->m_setterVars.find(debugText2);
   if(p == a_codeInfo->m_setterVars.end())
     return false;
-  //if(typeName1 != p->second && std::string("struct ") + typeName1 != p->second && std::string("class ") + typeName1 != p->second)
-  //  return false;
+
   if(setterS != nullptr)
     (*setterS) = debugText2;
   if(setterM != nullptr)
     (*setterM) = debugText1.substr(debugText1.find(".")+1, debugText1.size());
   return true;
 }
+
+bool kslicer::KernelRewriter::NeedToRewriteMemberExpr(const clang::MemberExpr* expr, std::string& out_text)
+{
+  if(m_infoPass)
+    return false;
+  clang::ValueDecl* pValueDecl = expr->getMemberDecl();
+  if(!isa<FieldDecl>(pValueDecl))
+    return false;
+
+  clang::FieldDecl* pFieldDecl   = dyn_cast<FieldDecl>(pValueDecl);
+  clang::RecordDecl* pRecodDecl  = pFieldDecl->getParent();
+  const std::string thisTypeName = pRecodDecl->getNameAsString();
+  
+  if(!WasNotRewrittenYet(expr))
+    return false;
+
+  // (1) setter access
+  //
+  std::string setter, containerName;
+  if(CheckSettersAccess(expr, m_codeInfo, m_compiler, &setter, &containerName)) // process setter access
+  {
+    out_text = setter + "_" + containerName;
+    return true; 
+  }
+
+  // (2) *payload ==>  payload[fakeOffset],  RTV, process access to arguments payload->xxx
+  //
+  if(thisTypeName != m_mainClassName)
+  {
+    Expr* baseExpr = expr->getBase(); 
+    assert(baseExpr != nullptr);
+
+    const std::string baseName = GetRangeSourceCode(baseExpr->getSourceRange(), m_compiler);
+
+    size_t foundId  = size_t(-1);
+    bool needOffset = false;
+    for(size_t i=0;i<m_args.size();i++)
+    {
+      if(m_args[i].name == baseName)
+      {
+        foundId    = i;
+        needOffset = m_args[i].needFakeOffset;
+        break;
+      }
+    }
+
+    if(foundId != size_t(-1)) // else we didn't found 'payload' in kernela arguments, so just ignore it
+    {
+      // now split 'payload->xxx' to 'payload' (baseName) and 'xxx' (memberName); 
+      // 
+      const std::string exprContent = GetRangeSourceCode(expr->getSourceRange(), m_compiler);
+      auto pos = exprContent.find("->");
+      assert(pos != std::string::npos);
+      const std::string memberName = exprContent.substr(pos+2);
+  
+      if(m_codeInfo->megakernelRTV && m_codeInfo->pShaderCC->IsGLSL()) 
+      {
+        out_text = baseName + "." + memberName;
+        return true;
+      }
+      else if(needOffset)
+      {
+        out_text = baseName + "[" + m_fakeOffsetExp + "]." + memberName;
+        return true;
+      }
+    }
+  }
+  
+  //if(thisTypeName != m_mainClassName)
+  //  return false;
+
+  // (3) member ==> ubo.member
+  //
+  const std::string fieldName = pFieldDecl->getNameAsString(); 
+  const auto pMember = m_variables.find(fieldName);
+  if(pMember == m_variables.end())
+    return false;
+
+  //auto exprHash = kslicer::GetHashOfSourceRange(expr->getSourceRange());
+
+  // (2) put ubo->var instead of var, leave containers as they are
+  // process arrays and large data structures because small can be read once in the beggining of kernel
+  // // m_currKernel.hasInitPass &&
+  const bool isInLoopInitPart   = !m_codeInfo->IsRTV() && (expr->getSourceRange().getEnd()   < m_currKernel.loopInsides.getBegin());
+  const bool isInLoopFinishPart = !m_codeInfo->IsRTV() && (expr->getSourceRange().getBegin() > m_currKernel.loopInsides.getEnd());
+  const bool hasLargeSize     = true; // (pMember->second.sizeInBytes > kslicer::READ_BEFORE_USE_THRESHOLD);
+  const bool inMegaKernel     = m_codeInfo->megakernelRTV;
+  const bool subjectedToRed   = m_currKernel.subjectedToReduction.find(fieldName) != m_currKernel.subjectedToReduction.end();
+  if(!pMember->second.isContainer && WasNotRewrittenYet(expr) && !m_infoPass && (isInLoopInitPart || isInLoopFinishPart || !subjectedToRed) && 
+                                                                 (isInLoopInitPart || isInLoopFinishPart || pMember->second.isArray || hasLargeSize || inMegaKernel)) 
+  {
+    out_text = m_codeInfo->pShaderCC->UBOAccess(pMember->second.name);
+    clang::SourceRange thisRng = expr->getSourceRange();
+    clang::SourceRange endkRng = m_currKernel.loopOutsidesFinish;
+    if(thisRng.getEnd() == endkRng.getEnd()) // fixing stnrange bug
+      kslicer::PrintError("possible end-of-loop bug", thisRng, m_compiler.getSourceManager());
+    return true;
+  }
+
+  return false;
+}
+
 
 bool kslicer::KernelRewriter::VisitMemberExpr_Impl(clang::MemberExpr* expr)
 {
@@ -112,105 +213,13 @@ bool kslicer::KernelRewriter::VisitMemberExpr_Impl(clang::MemberExpr* expr)
     return true; 
   }
 
-  const std::string debugMe = GetRangeSourceCode(expr->getSourceRange(), m_compiler);
-
-  ValueDecl* pValueDecl = expr->getMemberDecl();
-  if(!isa<FieldDecl>(pValueDecl))
-    return true;
-
-  FieldDecl* pFieldDecl  = dyn_cast<FieldDecl>(pValueDecl);
-  assert(pFieldDecl != nullptr);
-  RecordDecl* pRecodDecl = pFieldDecl->getParent();
-  assert(pRecodDecl != nullptr);
-
-  const std::string thisTypeName = pRecodDecl->getNameAsString();
-
-  std::string setter, containerName;
-  if(WasNotRewrittenYet(expr) && CheckSettersAccess(expr, m_codeInfo, m_compiler, &setter, &containerName)) // process setter access
+  std::string rewrittenText;
+  if(NeedToRewriteMemberExpr(expr, rewrittenText))
   {
-    m_rewriter.ReplaceText(expr->getSourceRange(), setter + "_" + containerName);
+    m_rewriter.ReplaceText(expr->getSourceRange(), rewrittenText);
     MarkRewritten(expr);
   }
-  else if(WasNotRewrittenYet(expr) && thisTypeName != m_mainClassName) // RTV, process access to arguments payload->xxx
-  {
-    Expr* baseExpr = expr->getBase(); 
-    assert(baseExpr != nullptr);
 
-    const std::string baseName = GetRangeSourceCode(baseExpr->getSourceRange(), m_compiler);
-
-    size_t foundId  = size_t(-1);
-    bool needOffset = false;
-    for(size_t i=0;i<m_args.size();i++)
-    {
-      if(m_args[i].name == baseName)
-      {
-        foundId    = i;
-        needOffset = m_args[i].needFakeOffset;
-        break;
-      }
-    }
-
-    if(foundId == size_t(-1)) // we didn't found 'payload' in kernela arguments, so just ignore it
-      return true;
-    
-    // now split 'payload->xxx' to 'payload' (baseName) and 'xxx' (memberName); 
-    // 
-    const std::string exprContent = GetRangeSourceCode(expr->getSourceRange(), m_compiler);
-    auto pos = exprContent.find("->");
-    assert(pos != std::string::npos);
-
-    const std::string memberName = exprContent.substr(pos+2);
-
-    if(WasNotRewrittenYet(expr))
-    {
-      if(m_codeInfo->megakernelRTV && m_codeInfo->pShaderCC->IsGLSL()) 
-        m_rewriter.ReplaceText(expr->getSourceRange(), baseName + "." + memberName);
-      else if(needOffset)
-        m_rewriter.ReplaceText(expr->getSourceRange(), baseName + "[" + m_fakeOffsetExp + "]." + memberName);
-      MarkRewritten(expr);
-    }
-
-    return true;
-  }
-
-  // process access to class member data
-  // 
-
-  // (1) get variable offset in buffer by its name 
-  //
-  const std::string fieldName = pFieldDecl->getNameAsString(); 
-  const auto pMember = m_variables.find(fieldName);
-  if(pMember == m_variables.end())
-    return true;
-
-  //auto exprHash = kslicer::GetHashOfSourceRange(expr->getSourceRange());
-
-  // (2) put ubo->var instead of var, leave containers as they are
-  // process arrays and large data structures because small can be read once in the beggining of kernel
-  // // m_currKernel.hasInitPass &&
-  const bool isInLoopInitPart   = !m_codeInfo->IsRTV() && (expr->getSourceRange().getEnd()   < m_currKernel.loopInsides.getBegin());
-  const bool isInLoopFinishPart = !m_codeInfo->IsRTV() && (expr->getSourceRange().getBegin() > m_currKernel.loopInsides.getEnd());
-  const bool hasLargeSize     = (pMember->second.sizeInBytes > kslicer::READ_BEFORE_USE_THRESHOLD);
-  const bool inMegaKernel     = m_codeInfo->megakernelRTV;
-  const bool subjectedToRed   = m_currKernel.subjectedToReduction.find(fieldName) != m_currKernel.subjectedToReduction.end();
-  if(!pMember->second.isContainer && WasNotRewrittenYet(expr) && !m_infoPass && 
-      (isInLoopInitPart || isInLoopFinishPart || !subjectedToRed) && 
-      (isInLoopInitPart || isInLoopFinishPart || pMember->second.isArray || hasLargeSize || inMegaKernel)) 
-  {
-    std::string rewrittenName = m_codeInfo->pShaderCC->UBOAccess(pMember->second.name);
-
-    clang::SourceRange thisRng = expr->getSourceRange();
-    clang::SourceRange endkRng = m_currKernel.loopOutsidesFinish;
-
-    if(thisRng.getEnd() == endkRng.getEnd()) // fixing stnrange bug
-    {
-      kslicer::PrintError("possible end-of-loop bug", thisRng, m_compiler.getSourceManager());
-    }
-    
-    m_rewriter.ReplaceText(thisRng, rewrittenName);
-    MarkRewritten(expr);
-  }
-  
   return true;
 }
 
@@ -818,16 +827,36 @@ bool kslicer::KernelRewriter::VisitCXXOperatorCallExpr_Impl(CXXOperatorCallExpr*
   return true;
 }
 
+void kslicer::KernelRewriter::DetectTextureAccess(clang::BinaryOperator* expr)
+{
+  std::string op = GetRangeSourceCode(SourceRange(expr->getOperatorLoc()), m_compiler); 
+  //std::string debugText = GetRangeSourceCode(expr->getSourceRange(), m_compiler);     
+  if(expr->isAssignmentOp()) // detect a_brightPixels[coord] = color;
+  {
+    clang::Expr* left = expr->getLHS(); 
+    if(clang::isa<clang::CXXOperatorCallExpr>(left))
+    {
+      clang::CXXOperatorCallExpr* leftOp = clang::dyn_cast<clang::CXXOperatorCallExpr>(left);
+      std::string op2 = GetRangeSourceCode(SourceRange(leftOp->getOperatorLoc()), m_compiler);  
+      if(op2 == "]" || op2 == "[" || op2 == "[]")
+        ProcessReadWriteTexture(leftOp, true);
+    }
+  }
+  //else if(op == "]" || op == "[" || op == "[]")
+  //  ProcessReadWriteTexture(expr, false);
+}
+
 bool kslicer::KernelRewriter::VisitBinaryOperator_Impl(BinaryOperator* expr) // detect reduction like m_var = F(m_var,expr)
 {
   auto opRange = expr->getSourceRange();
-  if(opRange.getEnd() <= m_currKernel.loopInsides.getBegin() || opRange.getBegin() >= m_currKernel.loopInsides.getEnd() ) // not inside loop
+  if(!m_codeInfo->IsRTV() && (opRange.getEnd() <= m_currKernel.loopInsides.getBegin() || opRange.getBegin() >= m_currKernel.loopInsides.getEnd())) // not inside loop
     return true;  
 
   const auto op = expr->getOpcodeStr();
   if(op != "=")
     return true;
   
+  DetectTextureAccess(expr);
   const Expr* lhs = expr->getLHS();
   const Expr* rhs = expr->getRHS();
 
