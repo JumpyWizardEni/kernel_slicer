@@ -9,6 +9,6 @@
 
 std::vector<float> solve_gpu();
 double randfrom(double min, double max);
-void save_image(const std::string &image_name, std::vector<float> density);
+void save_image(int N, const std::string &image_name, std::vector<float> density);
 
 #endif //TEST_TEST_CLASS_GPU_H
