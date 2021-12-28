@@ -135,7 +135,7 @@ std::vector<float> solve_gpu(int N, const std::vector<float>& density, const std
 
     //// iter by iter 
     //
-    for (int i = 0; i < 200; ++i) {
+    for (int i = 0; i < 50; ++i) {
         VkCommandBuffer commandBuffer = vk_utils::createCommandBuffer(device, commandPool);
     
         VkCommandBufferBeginInfo beginCommandBufferInfo = {};
