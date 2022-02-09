@@ -47,9 +47,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -fPIC")
 #        ../vkutils/geom/cmesh.cpp)
 
 add_executable(testapp
-        test_class.cpp
-        main.cpp
-        stb_image_write.h
+        src/test_class.cpp
+        src/main.cpp
+        include/stb_image_write.h
+        src/SimpleRenderer.cpp
         )
 
 set_target_properties(testapp PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
