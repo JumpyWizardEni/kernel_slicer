@@ -6,13 +6,20 @@
 #include <string>
 #include <unordered_map>
 
-#include "vulkan_basics.h"
-
 #include "vk_pipeline.h"
 #include "vk_buffers.h"
 #include "vk_utils.h"
+#include "vk_copy.h"
+#include "vk_context.h"
 
 {{Includes}}
+
+## for Decl in ClassDecls  
+{% if Decl.InClass and Decl.IsType %}
+using {{Decl.Type}} = {{MainClassName}}::{{Decl.Type}}; // for passing this data type to UBO
+{% endif %}
+## endfor
+
 #include "include/{{UBOIncl}}"
 
 {% for SetterDecl in SettersDecl %}  
@@ -24,9 +31,14 @@ class {{MainClassName}}_Generated : public {{MainClassName}}
 public:
 
   {% for ctorDecl in Constructors %}
-  {{ctorDecl}}
+  {% if ctorDecl.NumParams == 0 %}
+  {{ctorDecl.ClassName}}_Generated() {}
+  {% else %}
+  {{ctorDecl.ClassName}}_Generated({{ctorDecl.Params}}) : {{ctorDecl.ClassName}}({{ctorDecl.PrevCall}}) {}
+  {% endif %}
   {% endfor %}
   virtual void InitVulkanObjects(VkDevice a_device, VkPhysicalDevice a_physicalDevice, size_t a_maxThreadsCount);
+  virtual void SetVulkanContext(vk_utils::VulkanContext a_ctx) { m_ctx = a_ctx; }
 
 ## for MainFunc in MainFunctions
   virtual void SetVulkanInOutFor_{{MainFunc.Name}}(
@@ -69,26 +81,84 @@ public:
     UpdateTextureMembers(a_pCopyEngine);
   }
   
+  {% if HasCommitDeviceFunc %}
+  void CommitDeviceData() override // you have to define this virtual function in the original imput class
+  {
+    InitMemberBuffers();
+    UpdateAll(m_ctx.pCopyHelper);
+  }  
+  {% endif %}
+  {% if HasGetTimeFunc %}
+  void GetExecutionTime(const char* a_funcName, float a_out[4]) override; 
+  {% endif %}
+  {% if UpdateMembersPlainData %}
+  void UpdateMembersPlainData() override { UpdatePlainMembers(m_ctx.pCopyHelper); } 
+  {% endif %}
+  {% if UpdateMembersVectorData %}
+  void UpdateMembersVectorData() override { UpdateVectorMembers(m_ctx.pCopyHelper); }
+  {% endif %}
+  {% if UpdateMembersTextureData %}
+  void UpdateMembersTexureData() override { UpdateTextureMembers(m_ctx.pCopyHelper); }
+  {% endif %}
+  
   virtual void UpdatePlainMembers(std::shared_ptr<vk_utils::ICopyEngine> a_pCopyEngine);
   virtual void UpdateVectorMembers(std::shared_ptr<vk_utils::ICopyEngine> a_pCopyEngine);
   virtual void UpdateTextureMembers(std::shared_ptr<vk_utils::ICopyEngine> a_pCopyEngine);
-
+  {% if HasFullImpl %}
+  virtual void ReadPlainMembers(std::shared_ptr<vk_utils::ICopyEngine> a_pCopyEngine);
+  {% endif %}
+  
   {% for MainFunc in MainFunctions %}  
   virtual {{MainFunc.ReturnType}} {{MainFunc.Decl}};
   {% endfor %}
+  {% if HasFullImpl %}
+
+  {% for MainFunc in MainFunctions %}  
+  {% if MainFunc.OverrideMe %}
+  {{MainFunc.ReturnType}} {{MainFunc.DeclOrig}} override;
+  {% endif %}
+  {% endfor %}
+
+  {% for MainFunc in MainFunctions %}  
+  {% if MainFunc.OverrideMe %}
+  inline vk_utils::ExecTime Get{{MainFunc.Name}}ExecutionTime() const { return m_exTime{{MainFunc.Name}}; }
+  {% endif %}
+  {% endfor %}
+
+  {% for MainFunc in MainFunctions %}  
+  {% if MainFunc.OverrideMe %}
+  vk_utils::ExecTime m_exTime{{MainFunc.Name}};
+  {% endif %}
+  {% endfor %}
+  {% endif %} {# /* end if HasFullImpl */ #}
 
   virtual void copyKernelFloatCmd(uint32_t length);
   
   {% for KernelDecl in KernelsDecls %}
   {{KernelDecl}}
   {% endfor %}
-protected:
   
-  VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-  VkDevice         device         = VK_NULL_HANDLE;
+  struct MemLoc
+  {
+    VkDeviceMemory memObject = VK_NULL_HANDLE;
+    size_t         memOffset = 0;
+    size_t         allocId   = 0;
+  };
 
-  VkCommandBuffer  m_currCmdBuffer   = VK_NULL_HANDLE;
-  uint32_t         m_currThreadFlags = 0;
+  virtual MemLoc AllocAndBind(const std::vector<VkBuffer>& a_buffers); ///< replace this function to apply custom allocator
+  virtual MemLoc AllocAndBind(const std::vector<VkImage>& a_image);    ///< replace this function to apply custom allocator
+  virtual void   FreeAllAllocations(std::vector<MemLoc>& a_memLoc);    ///< replace this function to apply custom allocator
+
+protected:
+
+  VkPhysicalDevice        physicalDevice = VK_NULL_HANDLE;
+  VkDevice                device         = VK_NULL_HANDLE;
+  vk_utils::VulkanContext m_ctx          = {};
+
+  VkCommandBuffer         m_currCmdBuffer   = VK_NULL_HANDLE;
+  uint32_t                m_currThreadFlags = 0;
+
+  std::vector<MemLoc>     m_allMems;
 
   std::unique_ptr<vk_utils::ComputePipelineMaker> m_pMaker = nullptr;
   VkPhysicalDeviceProperties m_devProps;
@@ -106,13 +176,9 @@ protected:
   virtual void InitAllGeneratedDescriptorSets_{{MainFunc.Name}}();
 ## endfor
 
-  virtual void AllocMemoryForInternalBuffers(const std::vector<VkBuffer>& a_buffers);
   virtual void AssignBuffersToMemory(const std::vector<VkBuffer>& a_buffers, VkDeviceMemory a_mem);
 
   virtual void AllocMemoryForMemberBuffersAndImages(const std::vector<VkBuffer>& a_buffers, const std::vector<VkImage>& a_image);
-  
-  virtual void FreeMemoryForInternalBuffers();
-  virtual void FreeMemoryForMemberBuffersAndImages();
   virtual std::string AlterShaderPath(const char* in_shaderPath) { return std::string(in_shaderPath); }
 
   {{PlainMembersUpdateFunctions}}
@@ -121,12 +187,13 @@ protected:
 ## for MainFunc in MainFunctions  
   struct {{MainFunc.Name}}_Data
   {
-## for Buffer in MainFunc.LocalVarsBuffersDecl
+    {% if MainFunc.IsRTV and not MainFunc.IsMega %}
+    {% for Buffer in MainFunc.LocalVarsBuffersDecl %}
     VkBuffer {{Buffer.Name}}Buffer = VK_NULL_HANDLE;
     size_t   {{Buffer.Name}}Offset = 0;
-
-## endfor
-## for Arg in MainFunc.InOutVars
+    {% endfor %}
+    {% endif %}
+    {% for Arg in MainFunc.InOutVars %}
     {% if Arg.IsTexture %}
     VkImage     {{Arg.Name}}Text = VK_NULL_HANDLE;
     VkImageView {{Arg.Name}}View = VK_NULL_HANDLE;
@@ -134,7 +201,8 @@ protected:
     VkBuffer {{Arg.Name}}Buffer = VK_NULL_HANDLE;
     size_t   {{Arg.Name}}Offset = 0;
     {% endif %}
-## endfor
+    {% endfor %}
+    bool needToClearOutput = {% if MainFunc.IsRTV %}true{% else %}false{% endif %};
   } {{MainFunc.Name}}_local;
 
 ## endfor
@@ -152,15 +220,19 @@ protected:
     {% for Tex in TextureMembers %}
     VkImage     {{Tex}}Texture = VK_NULL_HANDLE;
     VkImageView {{Tex}}View    = VK_NULL_HANDLE;
+    VkSampler   {{Tex}}Sampler = VK_NULL_HANDLE; ///<! aux sampler, may not be used
     {% endfor %}
-    VkDeviceMemory m_vecMem = VK_NULL_HANDLE;
-    VkDeviceMemory m_texMem = VK_NULL_HANDLE;
+    {% for Tex in TexArrayMembers %}
+    std::vector<VkImage>     {{Tex}}ArrayTexture;
+    std::vector<VkImageView> {{Tex}}ArrayView   ;
+    std::vector<VkSampler>   {{Tex}}ArraySampler; ///<! samplers for texture arrays are always used
+    {% endfor %}
     {% for Sam in SamplerMembers %}
     VkSampler      {{Sam}} = VK_NULL_HANDLE;
     {% endfor %}
   } m_vdata;
 
-  {% if length(TextureMembers) > 0 %}
+  {% if length(TextureMembers) > 0 or length(ClassTexArrayVars) > 0 %}
   VkImage   CreateTexture2D(const int a_width, const int a_height, VkFormat a_format, VkImageUsageFlags a_usage);
   VkSampler CreateSampler(const Sampler& a_sampler);
   struct TexAccessPair
@@ -204,7 +276,6 @@ protected:
   VkBuffer m_uboArgsBuffer = VK_NULL_HANDLE;
   VkBufferMemoryBarrier BarrierForArgsUBO(size_t a_size);
   {% endif %}
-  VkDeviceMemory m_allMem    = VK_NULL_HANDLE;
 
   {% for Kernel in Kernels %}
   VkPipelineLayout      {{Kernel.Name}}Layout   = VK_NULL_HANDLE;
@@ -253,6 +324,21 @@ protected:
   
   constexpr static uint32_t MEMCPY_BLOCK_SIZE = 256;
   constexpr static uint32_t REDUCTION_BLOCK_SIZE = 256;
+
+  {% if GenerateSceneRestrictions %}
+  virtual void SceneRestrictions(uint32_t a_restrictions[4]) const
+  {
+    uint32_t maxMeshes            = 1024;
+    uint32_t maxTotalVertices     = 1'000'000;
+    uint32_t maxTotalPrimitives   = 1'000'000;
+    uint32_t maxPrimitivesPerMesh = 200'000;
+
+    a_restrictions[0] = maxMeshes;
+    a_restrictions[1] = maxTotalVertices;
+    a_restrictions[2] = maxTotalPrimitives;
+    a_restrictions[3] = maxPrimitivesPerMesh;
+  }
+  {% endif %}
 };
 
 #endif

@@ -16,7 +16,7 @@ std::string GetFolderPath(const std::string& a_filePath);
 void kslicer::GLSLCompiler::GenerateShaders(nlohmann::json& a_kernelsJson, const MainClassInfo* a_codeInfo)
 {
   const auto& mainClassFileName       = a_codeInfo->mainClassFileName;
-  const auto& includeToShadersFolders = a_codeInfo->includeToShadersFolders;
+  const auto& ignoreFolders = a_codeInfo->ignoreFolders;
   
   #ifdef WIN32
   const std::string slash = "\\";
@@ -71,7 +71,7 @@ void kslicer::GLSLCompiler::GenerateShaders(nlohmann::json& a_kernelsJson, const
     std::string outFilePath = shaderPath + slash + outFileName;
     kslicer::ApplyJsonToTemplate(templatePath.c_str(), outFilePath, currKerneJson);
     buildSH << "glslangValidator -V " << outFileName.c_str() << " -o " << outFileName.c_str() << ".spv" << " -DGLSL -I.. ";
-    for(auto folder : includeToShadersFolders)
+    for(auto folder : ignoreFolders)
      buildSH << "-I" << folder.c_str() << " ";
     buildSH << std::endl;
 
@@ -81,7 +81,7 @@ void kslicer::GLSLCompiler::GenerateShaders(nlohmann::json& a_kernelsJson, const
       outFilePath = shaderPath + slash + outFileName;
       kslicer::ApplyJsonToTemplate(templatePathUpdInd.c_str(), outFilePath, currKerneJson);
       buildSH << "glslangValidator -V " << outFileName.c_str() << " -o " << outFileName.c_str() << ".spv" << " -DGLSL -I.. ";
-      for(auto folder : includeToShadersFolders)
+      for(auto folder : ignoreFolders)
        buildSH << "-I" << folder.c_str() << " ";
       buildSH << std::endl;
     }
@@ -92,7 +92,7 @@ void kslicer::GLSLCompiler::GenerateShaders(nlohmann::json& a_kernelsJson, const
       outFilePath = shaderPath + slash + outFileName;
       kslicer::ApplyJsonToTemplate(templatePathRedFin.c_str(), outFilePath, currKerneJson);
       buildSH << "glslangValidator -V " << outFileName.c_str() << " -o " << outFileName.c_str() << ".spv" << " -DGLSL -I.. ";
-      for(auto folder : includeToShadersFolders)
+      for(auto folder : ignoreFolders)
        buildSH << "-I" << folder.c_str() << " ";
       buildSH << std::endl;
     }
@@ -148,10 +148,8 @@ void kslicer::GLSLCompiler::GetThreadSizeNames(std::string a_strs[3]) const
 
 std::string kslicer::GLSLCompiler::ProcessBufferType(const std::string& a_typeName) const 
 { 
-  std::string type = a_typeName;
+  std::string type = kslicer::CleanTypeName(a_typeName);
   ReplaceFirst(type, "*", "");
-  ReplaceFirst(type, "const", "");
-
   if(type[type.size()-1] == ' ')
     type = type.substr(0, type.size()-1);
 
@@ -216,6 +214,44 @@ std::unordered_map<std::string, std::string> ListGLSLVectorReplacements()
   m_vecReplacements["const size_t"]         = "const uint64_t";
 
   return m_vecReplacements;
+}
+
+std::unordered_set<std::string> kslicer::ListPredefinedMathTypes()
+{
+  auto types = ListGLSLVectorReplacements();
+  std::unordered_set<std::string> res;
+  for(auto p : types)
+  {
+    res.insert(p.first);
+    res.insert(p.second);
+  };
+
+  res.insert("short");
+  res.insert("int");
+  res.insert("float");
+  res.insert("double");
+
+  return res;
+}
+
+std::string kslicer::CleanTypeName(const std::string& a_str)
+{
+  std::string typeName = a_str;
+  ReplaceFirst(typeName, "const ",     "");
+  ReplaceFirst(typeName, "const",      ""); // for 'const*'
+  ReplaceFirst(typeName, "struct ",    "");
+  ReplaceFirst(typeName, "class ",     "");
+  ReplaceFirst(typeName, "&",          "");
+  ReplaceFirst(typeName, "*",          "");
+  auto posOfDD = typeName.find("::");
+  if(posOfDD != std::string::npos)
+    typeName = typeName.substr(posOfDD+2);
+  
+  // remove spaces at the end
+  while(typeName[typeName.size()-1] == ' ')
+    typeName = typeName.substr(0, typeName.size()-1);
+
+  return typeName;
 }
 
 std::vector<std::pair<std::string, std::string> > SortByKeysByLen(const std::unordered_map<std::string, std::string>& a_map)
@@ -341,12 +377,7 @@ std::string GLSLFunctionRewriter::RewriteStdVectorTypeStr(const std::string& a_s
   sFeatures.useInt64Type = sFeatures.useInt64Type || isInt64;
 
   std::string resStr;
-  std::string typeStr = a_str;
-  ReplaceFirst(typeStr, "LiteMath::", "");
-  ReplaceFirst(typeStr, "glm::",      "");
-  ReplaceFirst(typeStr, "struct ",    "");
-  ReplaceFirst(typeStr, "const ",     "");
-  ReplaceFirst(typeStr, m_codeInfo->mainClassName + "::", "");
+  std::string typeStr = kslicer::CleanTypeName(a_str);
   ReplaceFirst(typeStr, "unsigned long", "uint");
   ReplaceFirst(typeStr, "unsigned char", "uint8_t");
   
@@ -713,6 +744,36 @@ bool GLSLFunctionRewriter::VisitCallExpr_Impl(clang::CallExpr* call)
     m_rewriter.ReplaceText(call->getSourceRange(), "mix(" + A + ", " + B + ", " + C + ")");
     MarkRewritten(call);
   }
+  else if(fname == "as_int32" && call->getNumArgs() == 1 && WasNotRewrittenYet(call))
+  {
+    const std::string text = RecursiveRewrite(call->getArg(0));
+    m_rewriter.ReplaceText(call->getSourceRange(), "floatBitsToInt(" + text + ")");
+    MarkRewritten(call);
+  }
+  else if(fname == "as_uint32" && call->getNumArgs() == 1 && WasNotRewrittenYet(call))
+  {
+    const std::string text = RecursiveRewrite(call->getArg(0));
+    m_rewriter.ReplaceText(call->getSourceRange(), "floatBitsToUint(" + text + ")");
+    MarkRewritten(call);
+  }
+  else if((fname == "as_float" || fname == "as_float32")  && call->getNumArgs() == 1 && WasNotRewrittenYet(call))
+  {
+    const std::string text = RecursiveRewrite(call->getArg(0));
+    const auto qtOfArg     = call->getArg(0)->getType();
+    
+    if(std::string(qtOfArg.getAsString()) == "uint"     || std::string(qtOfArg.getAsString()) == "const uint" || 
+       std::string(qtOfArg.getAsString()) == "uint32_t" || std::string(qtOfArg.getAsString()) == "const uint32_t")
+      m_rewriter.ReplaceText(call->getSourceRange(), "uintBitsToFloat(" + text + ")");
+    else
+      m_rewriter.ReplaceText(call->getSourceRange(), "intBitsToFloat(" + text + ")");
+    MarkRewritten(call);
+  }
+  else if((fname == "inverse4x4" || fname == "inverse3x3" || fname == "inverse2x2") && call->getNumArgs() == 1 && WasNotRewrittenYet(call))
+  {
+    const std::string text = RecursiveRewrite(call->getArg(0));
+    m_rewriter.ReplaceText(call->getSourceRange(), "inverse(" + text + ")");
+    MarkRewritten(call);
+  }
   else if(pFoundSmth != m_funReplacements.end() && WasNotRewrittenYet(call))
   {
     m_rewriter.ReplaceText(call->getSourceRange(), pFoundSmth->second + "(" + CompleteFunctionCallRewrite(call));
@@ -723,7 +784,7 @@ bool GLSLFunctionRewriter::VisitCallExpr_Impl(clang::CallExpr* call)
     m_rewriter.ReplaceText(call->getSourceRange(), fname + "(" + CompleteFunctionCallRewrite(call));
     MarkRewritten(call);
   }
-
+ 
   return true; 
 }
 
@@ -851,7 +912,13 @@ bool GLSLFunctionRewriter::VisitImplicitCastExpr_Impl(clang::ImplicitCastExpr* c
   clang::QualType qt = cast->getType(); qt.removeLocalFastQualifiers();
   std::string castTo = RewriteStdVectorTypeStr(qt.getAsString());
   
-  if(WasNotRewrittenYet(next) && qt.getAsString() != "size_t")
+  //if(castTo == "std::size_t")
+  //{
+  //  std::string debugText = qt.getAsString();
+  //  int a = 2;
+  //}
+
+  if(WasNotRewrittenYet(next) && qt.getAsString() != "size_t" && qt.getAsString() != "std::size_t")
   {
     const std::string exprText = RecursiveRewrite(next);
     m_rewriter.ReplaceText(next->getSourceRange(), castTo + "(" + exprText + ")");
@@ -999,7 +1066,7 @@ std::string GLSLKernelRewriter::RecursiveRewrite(const clang::Stmt* expr)
     return std::string("kgenArgs.") + text;
   }
   
-  //// check CXXConstructExpr->ImplicitCastExpr->MemberExpr and NeedToRewriteMemberExpr(MemberExpr)
+  //// check CXXConstructExpr->ImplicitCastExpr->MemberExpr, CXXConstructExpr->MemberExpr and NeedToRewriteMemberExpr(MemberExpr)
   //
   if(clang::isa<clang::CXXConstructExpr>(expr)) // bugfix for recurive rewrite of single node, MemberExpr access in kernel
   {
@@ -1010,10 +1077,13 @@ std::string GLSLKernelRewriter::RecursiveRewrite(const clang::Stmt* expr)
     if(ctorDecl->isCopyOrMoveConstructor()) // || call->getNumArgs() == 0
     {
       const clang::Expr* pExprInsideConstructor =	pConstruct->getArg(0);
-      if(clang::isa<clang::ImplicitCastExpr>(pExprInsideConstructor))
-        expr = clang::dyn_cast<clang::ImplicitCastExpr>(pExprInsideConstructor)->getSubExpr();
+      if(clang::isa<clang::ImplicitCastExpr>(pExprInsideConstructor))                          // CXXConstructExpr->ImplicitCastExpr->MemberExpr
+        expr = clang::dyn_cast<clang::ImplicitCastExpr>(pExprInsideConstructor)->getSubExpr(); // CXXConstructExpr->MemberExpr
+      else if(clang::isa<clang::MemberExpr>(pExprInsideConstructor))
+        expr = pExprInsideConstructor;
     }
   }
+
   if(clang::isa<clang::MemberExpr>(expr)) // same bugfix for recurive rewrite of single node, MemberExpr access in kernel
   {
     const clang::MemberExpr* pMemberExpr = clang::dyn_cast<const clang::MemberExpr>(expr);
@@ -1038,10 +1108,27 @@ bool GLSLKernelRewriter::VisitCallExpr_Impl(clang::CallExpr* call)
   std::vector<kslicer::ArgMatch> usedArgMatches = kslicer::MatchCallArgsForKernel(call, m_currKernel, m_compiler);
   std::vector<kslicer::ArgMatch> shittyPointers; shittyPointers.reserve(usedArgMatches.size());
   for(const auto& x : usedArgMatches) {
-    if(x.isPointer)
+    const bool exclude = NameNeedsFakeOffset(x.actual); // #NOTE! seems that formal/actual parameters have to be swaped for the whole code
+    if(x.isPointer && !exclude)
       shittyPointers.push_back(x);
   }
   
+  // check if at leat one argument of a function call require function call rewrite due to fake offset
+  //
+  bool rewriteDueToFakeOffset = false;
+  {
+    rewriteDueToFakeOffset = false;
+    for(unsigned i=0;i<call->getNumArgs(); i++)
+    {
+      const std::string argName = kslicer::GetRangeSourceCode(call->getArg(i)->getSourceRange(), m_compiler);
+      if(NameNeedsFakeOffset(argName))
+      {
+        rewriteDueToFakeOffset = true;
+        break;
+      }
+    }
+  }
+
   const clang::FunctionDecl* fDecl = call->getDirectCallee();  
   if(shittyPointers.size() > 0 && fDecl != nullptr)
   {
@@ -1070,6 +1157,26 @@ bool GLSLKernelRewriter::VisitCallExpr_Impl(clang::CallExpr* call)
       else
         rewrittenRes += RecursiveRewrite(call->getArg(i));
       
+      if(i!=call->getNumArgs()-1)
+        rewrittenRes += ", ";
+    }
+    rewrittenRes += ")"; 
+
+    m_rewriter.ReplaceText(call->getSourceRange(), rewrittenRes); 
+    MarkRewritten(call);
+  }
+  else if (m_codeInfo->IsRTV() && rewriteDueToFakeOffset)
+  {
+    std::string fname        = fDecl->getNameInfo().getName().getAsString();
+    std::string rewrittenRes = fname + "(";
+    for(unsigned i=0;i<call->getNumArgs(); i++)
+    {
+      const std::string argName = kslicer::GetRangeSourceCode(call->getArg(i)->getSourceRange(), m_compiler);
+      if(NameNeedsFakeOffset(argName) && !m_codeInfo->megakernelRTV)
+        rewrittenRes += RecursiveRewrite(call->getArg(i)) + "[" + m_fakeOffsetExp + "]";
+      else
+        rewrittenRes += RecursiveRewrite(call->getArg(i));
+
       if(i!=call->getNumArgs()-1)
         rewrittenRes += ", ";
     }
@@ -1274,18 +1381,30 @@ bool GLSLKernelRewriter::VisitCXXMemberCallExpr_Impl(clang::CXXMemberCallExpr* c
     {
       bool needRewrite = true;
       const clang::QualType leftType = pTexName->getType(); 
+      std::string typeName = leftType.getAsString();
+      int texCoordId = 1;                                        ///<! texture.sample(m_sampler, texCoord)
       if(leftType->isPointerType()) // buffer ? --> ignore
+      {
+        const auto qt2        = leftType->getPointeeType();
+        std::string typeName2 = qt2.getAsString();
+        ReplaceFirst(typeName2, "const ",  ""); // remove 'const '
+        ReplaceFirst(typeName2, "struct ", ""); // remove 'struct '
+        ReplaceFirst(objName, "->",  "");       // remove '->'
+        needRewrite = (typeName2 == "ITexture2DCombined") || (typeName2 == "ITexture3DCombined") || (typeName2 == "ITextureCubeCombined");
+        texCoordId  = 0;                                         ///<! combinedObject->sample(texCoord)
+      }
+      else if(!kslicer::IsTexture(leftType))
+      {
         needRewrite = false;
-      if(!kslicer::IsTexture(leftType))
-        needRewrite = false;
-      
+      }
+
       if(needRewrite)
       {
         //clang::Expr* samplerExpr = call->getArg(0); // TODO: process sampler? use separate sampler and image?
         //clang::Expr* txCoordExpr = call->getArg(1);
         //std::string text1 = kslicer::GetRangeSourceCode(samplerExpr->getSourceRange(), m_compiler); 
         //std::string text2 = kslicer::GetRangeSourceCode(txCoordExpr->getSourceRange(), m_compiler); 
-        std::string texCoord = RecursiveRewrite(call->getArg(1));
+        std::string texCoord = RecursiveRewrite(call->getArg(texCoordId));
         m_rewriter.ReplaceText(call->getSourceRange(), std::string("texture") + "(" + objName + ", " + texCoord + ")");
         MarkRewritten(call); 
       }

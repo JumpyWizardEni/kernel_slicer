@@ -1,15 +1,26 @@
 #include "initial_pass.h"
 #include <iostream>
+#include <vector>
+#include <string>
 
-void kslicer::SplitContainerTypes(const clang::ClassTemplateSpecializationDecl* specDecl, std::string& a_containerType, std::string& a_containerDataType)
+clang::TypeDecl* kslicer::SplitContainerTypes(const clang::ClassTemplateSpecializationDecl* specDecl, std::string& a_containerType, std::string& a_containerDataType)
 {
   a_containerType = specDecl->getNameAsString();      
   const auto& templateArgs = specDecl->getTemplateArgs();
-        
+
+  clang::TypeDecl* result = nullptr;      
   if(templateArgs.size() > 0)
-    a_containerDataType = templateArgs[0].getAsType().getAsString();
+  {
+    clang::QualType qt  = templateArgs[0].getAsType();
+    a_containerDataType = qt.getAsString();
+    auto pRecordType = qt->getAsStructureType();
+    if(pRecordType != nullptr)
+      result = pRecordType->getDecl();
+  }
   else
     a_containerDataType = "unknown";
+
+  return result;
 }
 
 
@@ -20,11 +31,12 @@ kslicer::KernelInfo::ArgInfo kslicer::ProcessParameter(const clang::ParmVarDecl 
   kslicer::KernelInfo::ArgInfo arg;
   arg.name = p->getNameAsString();
   arg.type = clang::QualType::getAsString(q.split(), clang::PrintingPolicy{ {} });
+  arg.kind = kslicer::GetKindOfType(q);
   arg.size = 1;
   if (q->isPointerType()) 
   {
-    arg.size      = 1; // Because C always pass reference
-    arg.kind      = kslicer::DATA_KIND::KIND_POINTER;
+    arg.size = 1; // Because C always pass reference
+    arg.kind = kslicer::DATA_KIND::KIND_POINTER;
   }
   else if(q->isReferenceType()) 
   {
@@ -99,7 +111,7 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* 
   const QualType qt   = pType->getLocallyUnqualifiedSingleStepDesugaredType();
   const auto typeName = qt.getAsString();
 
-  if(typeName == std::string("class ") + MAIN_CLASS_NAME || typeName == std::string("struct ") + MAIN_CLASS_NAME)
+  if(IsMainClassName(typeName))
     m_mainClassASTNode = record;
   else if(!record->isPOD())
     m_classList.push_back(record); // rememer for futher processing of complex classes
@@ -109,6 +121,8 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitCXXRecordDecl(CXXRecordDecl* 
 
 bool kslicer::InitialPassRecursiveASTVisitor::NeedToProcessDeclInFile(std::string a_fileName)
 {
+  //if(a_fileName == m_codeInfo.mainClassFileInclude)   // we don't yet know neither m_codeInfo.mainClassFileInclude, nor MAIN_FILE_INCLUDE
+  //  return true;
   bool needInsertToKernels = false;                     // do we have to process this declaration to further insert it to GLSL/CL ?
   for(auto folder : m_codeInfo.includeCPPFolders)       //
   {
@@ -124,9 +138,17 @@ bool kslicer::InitialPassRecursiveASTVisitor::NeedToProcessDeclInFile(std::strin
 bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
 {
   const FileEntry* Entry = m_sourceManager.getFileEntryForID(m_sourceManager.getFileID(type->getLocation()));
-  std::string FileName   = Entry->getName().str();
-  if(!NeedToProcessDeclInFile(FileName))
+  if(Entry == nullptr)
     return true;
+
+  std::string FileName  = Entry->getName().str();
+  //std::string debugName = type->getNameAsString();
+  //if(debugName == "MyFloat3" || debugName == "MyType")
+  //{
+  //  int a = 2;
+  //}
+
+  const bool isDefinitelyInsideShaders = NeedToProcessDeclInFile(FileName);
 
   if(isa<CXXRecordDecl>(type)) 
   {
@@ -135,6 +157,8 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
     CXXRecordDecl* pCXXDecl = dyn_cast<CXXRecordDecl>(type);
     //if(!pCXXDecl->isCLike())
     //  return true;
+    if(!pCXXDecl->hasDefinition())
+      return true;
     if(pCXXDecl->isPolymorphic() || pCXXDecl->isAbstract())
       return true;   
   }
@@ -142,6 +166,7 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
   //const clang::QualType qt = 
 
   kslicer::DeclInClass decl;
+  
   if(isa<RecordDecl>(type))
   {
     RecordDecl* pRecord = dyn_cast<RecordDecl>(type);
@@ -157,7 +182,10 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
        decl.name != std::string("class ") + m_codeInfo.mainClassName && 
        decl.name != std::string("struct ") + m_codeInfo.mainClassName)
     {
-      m_transferredDecl[decl.name] = decl;
+      if(isDefinitelyInsideShaders)
+        m_transferredDecl[decl.name] = decl;
+      else
+        m_storedDecl     [decl.name] = decl;
       m_currId++;
     }
   }
@@ -172,7 +200,10 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
     decl.order     = m_currId;
     decl.kind      = kslicer::DECL_IN_CLASS::DECL_TYPEDEF;
     decl.extracted = true;
-    m_transferredDecl[decl.name] = decl;
+    if(isDefinitelyInsideShaders)
+      m_transferredDecl[decl.name] = decl;
+    else
+      m_storedDecl     [decl.name] = decl;
     m_currId++;
   }
   else if(isa<EnumDecl>(type))
@@ -184,12 +215,16 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
       EnumConstantDecl* pConstntDecl = (*it);
       decl.name      = pConstntDecl->getNameAsString();
       decl.type      = "const uint"; 
-      decl.srcRange  = pConstntDecl->getInitExpr()->getSourceRange();                    
+      if(pConstntDecl->getInitExpr() != nullptr)
+        decl.srcRange  = pConstntDecl->getInitExpr()->getSourceRange();                    
       decl.srcHash   = kslicer::GetHashOfSourceRange(decl.srcRange);  
       decl.order     = m_currId;
       decl.kind      = kslicer::DECL_IN_CLASS::DECL_CONSTANT;
       decl.extracted = true;
-      m_transferredDecl[decl.name] = decl;
+      if(isDefinitelyInsideShaders)
+        m_transferredDecl[decl.name] = decl;
+      else
+        m_storedDecl     [decl.name] = decl;
       m_currId++;
     }
  
@@ -202,6 +237,9 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitTypeDecl(TypeDecl* type)
 bool kslicer::InitialPassRecursiveASTVisitor::VisitVarDecl(VarDecl* pTargetVar)
 {
   const FileEntry* Entry = m_sourceManager.getFileEntryForID(m_sourceManager.getFileID(pTargetVar->getLocation()));
+  if(Entry == nullptr)
+    return true;
+    
   std::string FileName   = Entry->getName().str();
   if(!NeedToProcessDeclInFile(FileName))
     return true;
@@ -269,27 +307,51 @@ kslicer::CPP11_ATTR kslicer::GetMethodAttr(const clang::CXXMethodDecl* f, clang:
   return CPP11_ATTR::ATTR_UNKNOWN;
 }
 
+bool kslicer::InitialPassRecursiveASTVisitor::IsMainClassName(const std::string& a_typeName)
+{
+  if(a_typeName == MAIN_CLASS_NAME)
+    return true;
+  if(a_typeName == std::string("struct ") + MAIN_CLASS_NAME)
+    return true;
+  if(a_typeName == std::string("class ") + MAIN_CLASS_NAME)
+    return true;
+  if(a_typeName == std::string("const struct ") + MAIN_CLASS_NAME)
+    return true;
+  if(a_typeName == std::string("const class ") + MAIN_CLASS_NAME)
+    return true;
+  return false;
+}
+
+
 bool kslicer::InitialPassRecursiveASTVisitor::VisitCXXMethodDecl(CXXMethodDecl* f) 
 {
   if(f->isStatic())
     return true;
+  
+  // Get name of function
+  const DeclarationNameInfo dni = f->getNameInfo();
+  const DeclarationName dn      = dni.getName();
+  const std::string fname       = dn.getAsString();
+  const std::string fsrcfull    = kslicer::GetRangeSourceCode(f->getSourceRange(), m_compiler);
+  const std::string fdecl       = fsrcfull.substr(0, fsrcfull.find(")")+1);
+  
+  const QualType qThisType = f->getThisType();   
+  const QualType classType = qThisType.getTypePtr()->getPointeeType();
+  std::string thisTypeName = classType.getAsString();
+  
+  bool isMainClassMember = IsMainClassName(thisTypeName);
+  if(isMainClassMember && fsrcfull != fdecl) // we need to store MethodDec with full source code, not hust decls
+  {
+    allMemberFunctions [fname] = f; // just save this for further process in templated text rendering_host.cpp (virtual functions override for RTV pattern, so called "FullImpl" override)
+  }
 
   if (f->hasBody())
   {
-    // Get name of function
-    const DeclarationNameInfo dni = f->getNameInfo();
-    const DeclarationName dn      = dni.getName();
-    const std::string fname       = dn.getAsString();
-    
-    const QualType qThisType = f->getThisType();   
-    const QualType classType = qThisType.getTypePtr()->getPointeeType();
-    std::string thisTypeName = classType.getAsString();
-
     auto attr = kslicer::GetMethodAttr(f, m_compiler);
 
     if(m_codeInfo.IsKernel(fname)) // 
     {
-      if(thisTypeName == std::string("class ") + MAIN_CLASS_NAME || thisTypeName == std::string("struct ") + MAIN_CLASS_NAME || thisTypeName == MAIN_CLASS_NAME)
+      if(isMainClassMember)
       {
         ProcessKernelDef(f, functions, MAIN_CLASS_NAME); // MAIN_CLASS_NAME::f ==> functions
         std::cout << "  found member kernel " << MAIN_CLASS_NAME.c_str() << "::" << fname.c_str() << std::endl;
@@ -313,7 +375,9 @@ bool kslicer::InitialPassRecursiveASTVisitor::VisitCXXMethodDecl(CXXMethodDecl* 
     else if(m_mainFuncts.find(fname) != m_mainFuncts.end())
     {
       m_mainFuncNodes[fname] = f;
-      //std::cout << "main function has found:\t" << fname.c_str() << std::endl;
+      //std::cout << "control function has found:\t" << fname.c_str() << std::endl;
+      //std::string text = kslicer::GetRangeSourceCode(f->getSourceRange(), m_compiler); 
+      //std::cout << "found src = " << text.c_str() << std::endl;
       //f->dump();
     }
     else if(attr == CPP11_ATTR::ATTR_SETTER)
@@ -336,19 +400,15 @@ kslicer::DataMemberInfo kslicer::ExtractMemberInfo(clang::FieldDecl* fd, const c
   kslicer::DataMemberInfo member;
   member.name        = fd->getName().str();
   member.type        = qt.getAsString();
+  member.kind        = kslicer::GetKindOfType(qt);
   member.sizeInBytes = 0; 
   member.offsetInTargetBuffer = 0;
+  member.isConst     = qt.isConstQualified();
 
   // now we should check werther this field is std::vector<XXX> or just XXX; 
   //
   const clang::Type* fieldTypePtr = qt.getTypePtr(); 
   assert(fieldTypePtr != nullptr);
-  if(fieldTypePtr->isPointerType()) // we ignore pointers due to we can't pass them to GPU correctly
-  {
-    member.isPointer = true;
-    member.kind      = kslicer::DATA_KIND::KIND_POINTER;
-    return member;
-  }
 
   auto typeDecl = fieldTypePtr->getAsRecordDecl();  
   if(fieldTypePtr->isConstantArrayType())
@@ -367,16 +427,25 @@ kslicer::DataMemberInfo kslicer::ExtractMemberInfo(clang::FieldDecl* fd, const c
   {
     member.isContainer = true;
     auto specDecl = clang::dyn_cast<clang::ClassTemplateSpecializationDecl>(typeDecl); 
-    kslicer::SplitContainerTypes(specDecl, member.containerType, member.containerDataType);
-    //std::cout << "  found container of type " << member.containerType.c_str() << ", which data type is " <<  member.containerDataType.c_str() << std::endl;
-    member.kind = kslicer::DATA_KIND::KIND_VECTOR;  // #TODO: probably texture or acceleration structure, check and refactor this!
+    member.pContainerDataTypeDeclIfRecord = kslicer::SplitContainerTypes(specDecl, member.containerType, member.containerDataType);
   }
   else
   {
     auto typeInfo      = astContext.getTypeInfo(qt);
     member.sizeInBytes = typeInfo.Width / 8; 
-    member.kind        = kslicer::DATA_KIND::KIND_POD;
   }
+ 
+  if(member.kind == kslicer::DATA_KIND::KIND_TEXTURE_SAMPLER_COMBINED || 
+     member.kind == kslicer::DATA_KIND::KIND_TEXTURE_SAMPLER_COMBINED_ARRAY || 
+     member.kind == kslicer::DATA_KIND::KIND_ACCEL_STRUCT)
+  {
+    member.isContainer = true; // for plain pointer members of special objects
+    // #TODO: get correct container type ... probably we need it ))
+  }
+  
+  auto pRecordType = fieldTypePtr->getAsStructureType();
+  if(pRecordType != nullptr)
+    member.pTypeDeclIfRecord = pRecordType->getDecl();
 
   return member;
 }
@@ -417,4 +486,33 @@ bool kslicer::InitialPassASTConsumer::HandleTopLevelDecl(DeclGroupRef d)
   for (iter b = d.begin(), e = d.end(); b != e; ++b)
     rv.TraverseDecl(*b);
   return true; // keep going
+}
+
+#include <filesystem>
+namespace fs = std::filesystem;
+
+void kslicer::CheckInterlanIncInExcludedFolders(const std::vector<std::string>& a_folders)
+{
+  std::vector<std::string> stopList;
+  stopList.push_back("LiteMath.h");
+  stopList.push_back("LiteMathGPU.h");
+  stopList.push_back("aligned_alloc.h");
+  stopList.push_back("sampler.h");
+  stopList.push_back("texture2d.h");
+
+  for(const auto path : a_folders) {
+    for (const auto& entry : fs::directory_iterator(path)) {
+      if(entry.is_directory())
+        continue;
+      const std::string fileName = entry.path();
+      bool found = false;
+      for(const auto fname : stopList) {
+        if(fileName.find(fname) != std::string::npos) {
+          std::cout << "[kslicer]: ALERT! --> found '" << fname.c_str() << "' in folder '" << path.c_str() << "'" << std::endl;
+          std::cout << "[kslicer]: Please use '" << fname.c_str() << "' from one of the folders in the 'IncludeToShaders' list" << std::endl; 
+          exit(0);
+        }
+      }
+    }
+  }
 }

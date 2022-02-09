@@ -102,6 +102,7 @@ namespace kslicer
       const BreakStmt * brkExp = result.Nodes.getNodeAs<BreakStmt>("breakLoop");
       const ReturnStmt* extExp = result.Nodes.getNodeAs<ReturnStmt>("exitFunction"); 
 
+
       if(func_decl && kern_call && kern) // found kernel call in MainFunc
       {
         std::string kName = kern->getNameAsString();
@@ -154,9 +155,9 @@ namespace kslicer
             {
               const clang::QualType qt = var2->getType();
               kslicer::UsedContainerInfo container;
-              container.type    = qt.getAsString();
               container.name    = pDataMember->first;
-              container.kind    = kslicer::GetKindOfType(qt, true);
+              container.type    = pDataMember->second.type;
+              container.kind    = pDataMember->second.kind;
               container.isConst = qt.isConstQualified();
               CurrMainFunc().usedContainers[container.name] = container;
             }
@@ -192,9 +193,9 @@ namespace kslicer
         varInfo.name        = var->getNameAsString();
         varInfo.type        = qt.getAsString();
         varInfo.sizeInBytes = typeInfo.Width / 8;
-        
-        varInfo.isArray   = false;
-        varInfo.arraySize = 0;
+        varInfo.isArray     = false;
+        varInfo.isConst     = qt.isConstQualified();
+        varInfo.arraySize   = 0;
         varInfo.typeOfArrayElement = ""; 
         
         if(typePtr->isConstantArrayType())
@@ -212,10 +213,9 @@ namespace kslicer
         }
 
         if(var->isLocalVarDecl() && !var->isConstexpr() && !qt.isConstQualified()) // list only local variables, exclude function arguments and all constants 
-        {
-          // can also check isCXXForRangeDecl() and check for index ... in some way ...
-          CurrMainFunc().Locals[varInfo.name] = varInfo;
-        }
+          CurrMainFunc().Locals[varInfo.name] = varInfo;                           // can also check isCXXForRangeDecl() and check for index ... in some way ...
+        else if(var->isLocalVarDecl())
+          CurrMainFunc().LocalConst[varInfo.name] = varInfo;
       }
       else if(func_decl && forLoop && forIter) // found for expression inside MainFunc
       {
@@ -326,9 +326,9 @@ namespace kslicer
             {
               const clang::QualType qt = var->getType();
               kslicer::UsedContainerInfo container;
-              container.type    = qt.getAsString();
-              container.name    = pDataMember->first;            
-              container.kind    = kslicer::GetKindOfType(qt, true);
+              container.name    = pDataMember->first; 
+              container.type    = pDataMember->second.type;           
+              container.kind    = pDataMember->second.kind;
               container.isConst = qt.isConstQualified();
               currKernel->usedContainers[container.name] = container;
             }
@@ -410,6 +410,7 @@ namespace kslicer
           decl.srcHash  = kslicer::GetHashOfSourceRange(decl.srcRange);  // (!!!) DON'T WORK (!!!)
           decl.order    = m_currId;
           decl.kind     = kslicer::DECL_IN_CLASS::DECL_STRUCT;
+          decl.inClass  = true;
           if(foundDecl.find(decl.name) == foundDecl.end())
           {
             foundDecl[decl.name] = decl;
@@ -468,6 +469,7 @@ namespace kslicer
         decl.srcHash  = kslicer::GetHashOfSourceRange(decl.srcRange); // (!!!) DON'T WORK (!!!) // NEED SECOND PASS !!!
         decl.order    = m_currId;
         decl.kind     = kslicer::DECL_IN_CLASS::DECL_TYPEDEF;
+        decl.inClass  = true;
         if(foundDecl.find(decl.name) == foundDecl.end())
         {
           foundDecl[decl.name] = decl;

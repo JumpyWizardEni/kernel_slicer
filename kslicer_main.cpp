@@ -6,6 +6,8 @@
 
 #include <unordered_map>
 #include <iomanip>
+#include <cctype>
+#include <queue>
 
 #include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
@@ -54,6 +56,8 @@ using namespace clang;
 
 using kslicer::KernelInfo;
 using kslicer::DataMemberInfo;
+
+//extern clang::CompilerInstance* g_pCompilerInstance;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -139,7 +143,7 @@ void kslicer::ReplaceOpenCLBuiltInTypes(std::string& a_typeName)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-std::unordered_map<std::string, std::string> ReadCommandLineParams(int argc, const char** argv, std::string& fileName)
+std::unordered_map<std::string, std::string> ReadCommandLineParams(int argc, const char** argv, std::string& fileName, std::vector<std::string>& allFiles)
 {
   std::unordered_map<std::string, std::string> cmdLineParams;
   for(int i=0; i<argc; i++)
@@ -160,8 +164,53 @@ std::unordered_map<std::string, std::string> ReadCommandLineParams(int argc, con
         cmdLineParams[key] = "";
     }
     else if(key.find(".cpp") != std::string::npos)
-      fileName = key;
+      allFiles.push_back(key);
   }
+
+  if(allFiles.size() == 0)
+  {
+    std::cout << "[kslicer]: no input file is specified " << std::endl;
+    exit(0);
+  }
+  else if(allFiles.size() == 1)
+    fileName = allFiles[0];
+  else
+  {
+    fileName = allFiles[0];
+    #ifdef WIN32
+    const std::string slash = "\\";
+    #else
+    const std::string slash = "/";
+    #endif
+
+    size_t posSlash = fileName.find_last_of(slash); 
+    auto   posCPP   = fileName.find(".cpp");
+    
+    assert(posSlash != std::string::npos);   
+    assert(posCPP   != std::string::npos);   
+
+    // merge files to a single temporary file
+    auto folderPath = fileName.substr(0, posSlash);
+    auto fileName2  = fileName.substr(posSlash+1, posCPP-posSlash-1);
+    auto fileNameT  = folderPath + slash + fileName2 + "_temp.cpp";
+    
+    std::cout << "[kslicer]: merging input files to temporary file '" << fileName2 << "_temp.cpp' " << std::endl;
+    std::ofstream fout(fileNameT);
+    for(auto file : allFiles)
+    {
+      fout << "////////////////////////////////////////////////////" << std::endl;
+      fout << "//// input file: " << file << std::endl;
+      fout << "////////////////////////////////////////////////////" << std::endl;
+      std::ifstream fin(file);
+      std::string line;
+      while (std::getline(fin, line))
+        fout << line.c_str() << std::endl;
+    } 
+    fout.close();
+    fileName = fileNameT;
+    std::cout << "[kslicer]: merging finished" << std::endl;
+  }
+
   return cmdLineParams;
 }
 
@@ -256,6 +305,24 @@ void ReadThreadsOrderFromStr(const std::string& threadsOrderStr, uint32_t  threa
   }
 }
 
+struct less_than_key2
+{
+  inline bool operator() (const kslicer::DataMemberInfo& struct1, const kslicer::DataMemberInfo& struct2)
+  {
+    if(struct1.aligmentGLSL != struct2.aligmentGLSL)
+      return (struct1.aligmentGLSL > struct2.aligmentGLSL);
+    else if(struct1.sizeInBytes != struct2.sizeInBytes)
+      return (struct1.sizeInBytes > struct2.sizeInBytes);
+    else if(struct1.isContainerInfo && !struct2.isContainerInfo)
+      return false;
+    else if(!struct1.isContainerInfo && struct2.isContainerInfo)
+      return true;
+    else
+      return struct1.name < struct2.name;
+  }
+};
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -289,15 +356,17 @@ int main(int argc, const char **argv)
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+  std::vector<std::string> allFiles;
   std::string fileName;
-  auto params = ReadCommandLineParams(argc, argv, fileName);
-
-  std::string mainClassName = "TestClass";
-  std::string outGenerated  = "data/generated.cl";
-  std::string stdlibFolder  = "";
-  std::string patternName   = "rtv";
-  std::string shaderCCName  = "clspv";
-  std::string hintFile      = "";
+  auto params = ReadCommandLineParams(argc, argv, fileName, allFiles);
+  
+  std::string mainFolderPath  = GetFolderPath(fileName);
+  std::string mainClassName   = "TestClass";
+  std::string outGenerated    = "data/generated.cl";
+  std::string stdlibFolder    = "";
+  std::string patternName     = "rtv";
+  std::string shaderCCName    = "clspv";
+  std::string hintFile        = "";
   uint32_t    threadsOrder[3] = {0,1,2};
   uint32_t    warpSize        = 32;
   bool        useCppInKernels = false;
@@ -354,10 +423,21 @@ int main(int argc, const char **argv)
   for(auto p : params) 
   {
     values.insert(p.second);
-    if(p.first.size() > 1 && p.first[0] == '-' && p.first[1] == 'I' && p.second == "IncludeToShaders")
+    std::string folderT = p.second;
+    std::transform(folderT.begin(), folderT.end(), folderT.begin(), [](unsigned char c){ return std::tolower(c); });
+
+    if(p.first.size() > 1 && p.first[0] == '-' && p.first[1] == 'I' && folderT == "ignore")
       includeFolderList.push_back(p.first.substr(2));
-    else if(p.first.size() > 1 && p.first[0] == '-' && p.first[1] == 'I' && p.second == "ExcludeFromShaders")
+    else if(p.first.size() > 1 && p.first[0] == '-' && p.first[1] == 'I' && folderT == "process")
       includeFolderList2.push_back(p.first.substr(2));
+  }
+
+  // make specific checks to be sure user don't include these files to hit project as normal files
+  //
+  {
+    auto excludeFolders = includeFolderList2;
+    excludeFolders.push_back(mainFolderPath);
+    kslicer::CheckInterlanIncInExcludedFolders(excludeFolders);
   }
 
   std::vector<const char*> argsForClang = ExcludeSlicerParams(argc, argv, params);  
@@ -395,7 +475,7 @@ int main(int argc, const char **argv)
     exit(0);
   }
   kslicer::MainClassInfo& inputCodeInfo = *pImplPattern;
-  inputCodeInfo.includeToShadersFolders = includeFolderList;  // set shader folders
+  inputCodeInfo.ignoreFolders = includeFolderList;  // set shader folders
   inputCodeInfo.includeCPPFolders       = includeFolderList2; // set common C/C++ folders
 
   if(shaderCCName == "glsl" || shaderCCName == "GLSL")
@@ -406,7 +486,7 @@ int main(int argc, const char **argv)
   else
   {
     inputCodeInfo.pShaderCC = std::make_shared<kslicer::ClspvCompiler>(useCppInKernels);
-    inputCodeInfo.includeToShadersFolders.push_back("include/");
+    inputCodeInfo.ignoreFolders.push_back("include/");
   }
 
   inputCodeInfo.defaultVkernelType = defaultVkernelType;
@@ -445,7 +525,8 @@ int main(int argc, const char **argv)
 
   compiler.createFileManager();
   compiler.createSourceManager(compiler.getFileManager());
-  
+  //g_pCompilerInstance = &compiler;
+
   // (0) add path dummy include files for STL and e.t.c. (we don't want to parse actually std library)
   //
   HeaderSearchOptions &headerSearchOptions = compiler.getHeaderSearchOpts();  
@@ -478,7 +559,7 @@ int main(int argc, const char **argv)
 
   // init clang tooling
   //
-  std::vector<const char*> argv2 = {argv[0], argv[1]};
+  std::vector<const char*> argv2 = {argv[0], fileName.c_str()};
   std::vector<std::string> extraArgs; extraArgs.reserve(32);
   for(auto p : params)
   {
@@ -532,12 +613,15 @@ int main(int argc, const char **argv)
   ParseAST(compiler.getPreprocessor(), &firstPassData, compiler.getASTContext());
   compiler.getDiagnosticClient().EndSourceFile(); // ??? What Is This Line For ???
   
+  //#TODO: remove this copy, just pass pointer to 'inputCodeInfo' inside 'firstPassData.rv' and thats all
+  //
   inputCodeInfo.allKernels           = firstPassData.rv.functions; 
   inputCodeInfo.allOtherKernels      = firstPassData.rv.otherFunctions;
   inputCodeInfo.allDataMembers       = firstPassData.rv.dataMembers;   
   inputCodeInfo.mainClassFileInclude = firstPassData.rv.MAIN_FILE_INCLUDE;
   inputCodeInfo.mainClassASTNode     = firstPassData.rv.m_mainClassASTNode;
   inputCodeInfo.ctors                = firstPassData.rv.ctors;
+  inputCodeInfo.allMemberFunctions   = firstPassData.rv.allMemberFunctions;
   inputCodeInfo.ProcessAllSetters(firstPassData.rv.m_setters, compiler);
 
   std::vector<kslicer::DeclInClass> generalDecls = firstPassData.rv.GetExtractedDecls();
@@ -669,6 +753,22 @@ int main(int argc, const char **argv)
   std::cout << "{" << std::endl;
   std::vector<kslicer::FuncData> usedByKernelsFunctions = kslicer::ExtractUsedFunctions(inputCodeInfo, compiler); // recursive processing of functions used by kernel, extracting all needed functions
   std::vector<kslicer::DeclInClass> usedDecls           = kslicer::ExtractTCFromClass(inputCodeInfo.mainClassName, inputCodeInfo.mainClassASTNode, compiler, Tool);
+  
+  for(const auto& usedDecl : usedDecls) // merge usedDecls with generalDecls
+  {
+    bool found = false;
+    for(const auto& currDecl : generalDecls)
+    {
+      if(currDecl.name == usedDecl.name)
+      {
+        found = true;
+        break;
+      }
+    }
+    if(!found)
+      generalDecls.push_back(usedDecl);
+  }
+  
   std::cout << "}" << std::endl;
   std::cout << std::endl;
   
@@ -735,13 +835,8 @@ int main(int argc, const char **argv)
               kslicer::UsedContainerInfo info;
               info.type          = member.second.type;
               info.name          = member.second.name;
+              info.kind          = member.second.kind;;
               info.isConst       = member.second.IsUsedTexture();      // strange thing ... 
-              if(member.second.IsUsedTexture())                        // TODO: detect other cases
-                info.kind = kslicer::DATA_KIND::KIND_TEXTURE;
-              else if(kslicer::IsAccelStruct(info.type))
-                info.kind = kslicer::DATA_KIND::KIND_ACCEL_STRUCT;
-              else 
-                info.kind = kslicer::DATA_KIND::KIND_VECTOR; 
               k.second.usedContainers[info.name] = info;
             }
             else 
@@ -762,6 +857,16 @@ int main(int argc, const char **argv)
       } // end for(const auto& f : usedByKernelsFunctions)
     } // end for(auto& k : inputCodeInfo.kernels)
 
+    for(const auto& k : inputCodeInfo.kernels) // fix this flag for members that were used in member functions but not in kernels directly
+    {
+      for(const auto& c : k.second.usedContainers)
+      {
+        auto pFound = inputCodeInfo.allDataMembers.find(c.second.name);
+        if(pFound != inputCodeInfo.allDataMembers.end())
+          pFound->second.usedInKernel = true;
+      }
+    }
+
     std::cout << "}" << std::endl;
     std::cout << std::endl;
   }
@@ -769,18 +874,43 @@ int main(int argc, const char **argv)
   std::cout << "(5) Process control functions to generate all 'MainCmd' functions" << std::endl; 
   std::cout << "{" << std::endl;
 
-  // (5) genarate cpp code with Vulkan calls
+  // (5) Process controll functions and generate some intermediate cpp code with Vulkan calls
   //
   ObtainKernelsDecl(inputCodeInfo.kernels, compiler, inputCodeInfo.mainClassName, inputCodeInfo);
+
   inputCodeInfo.allDescriptorSetsInfo.clear();
+  /////////////////////////////////////////////////////////////////////////////////////////////// fakeOffset flag for local variables
+  if(inputCodeInfo.megakernelRTV)
+  {
+    inputCodeInfo.megakernelRTV = false;
+    auto auxDecriptorSets = inputCodeInfo.allDescriptorSetsInfo;
+    for(auto& mainFunc : inputCodeInfo.mainFunc)
+    {
+      std::cout << " process subkernel " << mainFunc.Name.c_str() << std::endl;
+      inputCodeInfo.VisitAndRewrite_CF(mainFunc, compiler);           // ==> output to mainFunc and inputCodeInfo.allDescriptorSetsInfo
+    }
+    inputCodeInfo.PlugSpecVarsInCalls_CF(inputCodeInfo.mainFunc, inputCodeInfo.kernels, inputCodeInfo.allDescriptorSetsInfo);        
+    for(const auto& call : inputCodeInfo.allDescriptorSetsInfo)
+      inputCodeInfo.ProcessCallArs_KF(call);
+
+    auxDecriptorSets = inputCodeInfo.allDescriptorSetsInfo;
+    inputCodeInfo.allDescriptorSetsInfo.clear();
+
+    // analize inputCodeInfo.allDescriptorSetsInfo to mark all args of each kernel that we need to apply fakeOffset(tid) inside kernel to this arg
+    //
+    for(const auto& call : auxDecriptorSets)
+      inputCodeInfo.ProcessCallArs_KF(call);
+    inputCodeInfo.megakernelRTV = true;
+  }
+  /////////////////////////////////////////////////////////////////////////////////////////////// fakeOffset flag for local variables
+
   for(auto& mainFunc : inputCodeInfo.mainFunc)
   {
     std::cout << "  process " << mainFunc.Name.c_str() << std::endl;
-    inputCodeInfo.VisitAndRewrite_CF(mainFunc, compiler);           // ==> output to mainFunc
+    inputCodeInfo.VisitAndRewrite_CF(mainFunc, compiler);           // ==> output to mainFunc and inputCodeInfo.allDescriptorSetsInfo
   }
 
-  inputCodeInfo.PlugSpecVarsInCalls_CF(inputCodeInfo.mainFunc, inputCodeInfo.kernels, // ==>
-                                       inputCodeInfo.allDescriptorSetsInfo);          // <==
+  inputCodeInfo.PlugSpecVarsInCalls_CF(inputCodeInfo.mainFunc, inputCodeInfo.kernels, inputCodeInfo.allDescriptorSetsInfo);        
 
   // analize inputCodeInfo.allDescriptorSetsInfo to mark all args of each kernel that we need to apply fakeOffset(tid) inside kernel to this arg
   //
@@ -817,7 +947,14 @@ int main(int argc, const char **argv)
   std::cout << "(6) Calc offsets for all class members; ingore unused members that were not marked on previous step" << std::endl; 
   std::cout << "{" << std::endl;
 
-  inputCodeInfo.dataMembers  = kslicer::MakeClassDataListAndCalcOffsets(inputCodeInfo.allDataMembers);
+  inputCodeInfo.dataMembers = kslicer::MakeClassDataListAndCalcOffsets(inputCodeInfo.allDataMembers);
+
+  inputCodeInfo.ProcessMemberTypes(firstPassData.rv.GetOtherTypeDecls(), compiler.getSourceManager(), 
+                                   generalDecls);                      // ==> generalDecls
+  inputCodeInfo.ProcessMemberTypesAligment(inputCodeInfo.dataMembers, firstPassData.rv.GetOtherTypeDecls()); // ==> inputCodeInfo.dataMembers
+
+  std::sort(inputCodeInfo.dataMembers.begin(), inputCodeInfo.dataMembers.end(), less_than_key2()); // sort by aligment in GLSL
+
   auto jsonUBO               = kslicer::PrepareUBOJson(inputCodeInfo, inputCodeInfo.dataMembers, compiler);
   std::string uboIncludeName = inputCodeInfo.mainClassName + "_ubo.h";
 
@@ -942,10 +1079,8 @@ int main(int argc, const char **argv)
   std::cout << "(7) Perform final templated text rendering to generate Vulkan calls" << std::endl; 
   std::cout << "{" << std::endl;
   {
-    kslicer::PrintVulkanBasicsFile("templates/vulkan_basics.h", inputCodeInfo);
-
-    std::string rawname = kslicer::CutOffFileExt(inputCodeInfo.mainClassFileName);
-    auto json = PrepareJsonForAllCPP(inputCodeInfo, compiler, inputCodeInfo.mainFunc, rawname + "_generated.h", threadsOrder, uboIncludeName, jsonUBO); 
+    std::string rawname = kslicer::CutOffFileExt(allFiles[0]);
+    auto json = PrepareJsonForAllCPP(inputCodeInfo, compiler, inputCodeInfo.mainFunc, generalDecls, rawname + "_generated.h", threadsOrder, uboIncludeName, jsonUBO); 
 
     kslicer::ApplyJsonToTemplate("templates/vk_class.h",        rawname + "_generated.h", json); 
     kslicer::ApplyJsonToTemplate("templates/vk_class.cpp",      rawname + "_generated.cpp", json);
@@ -1010,26 +1145,6 @@ int main(int argc, const char **argv)
   {
     for(auto& k : inputCodeInfo.kernels)
       k.second.rewrittenText = inputCodeInfo.VisitAndRewrite_KF(k.second, compiler, k.second.rewrittenInit, k.second.rewrittenFinish);
-  }
-
-  // finally generate kernels
-  //
-  // generalDecls.insert( generalDecls.end(), usedDecls.begin(), usedDecls.end());
-  {
-    for(const auto& usedDecl : usedDecls)
-    {
-      bool found = false;
-      for(const auto& currDecl : generalDecls)
-      {
-        if(currDecl.name == usedDecl.name)
-        {
-          found = true;
-          break;
-        }
-      }
-      if(!found)
-        generalDecls.push_back(usedDecl);
-    }
   }
   
   auto json = kslicer::PrepareJsonForKernels(inputCodeInfo, usedByKernelsFunctions, generalDecls, compiler, threadsOrder, uboIncludeName, jsonUBO);

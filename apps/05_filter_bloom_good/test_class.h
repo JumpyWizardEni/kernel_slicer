@@ -52,11 +52,15 @@ public:
   
   void SetMaxImageSize(int w, int h);
 
-  void Bloom(int w, int h, const float4* inData4f, unsigned int* outData1ui);
+  virtual void Bloom(int w, int h, const float4* inData4f   __attribute__((size("w", "h"))) , 
+                                   unsigned int* outData1ui __attribute__((size("w", "h"))) );
+
+  virtual void CommitDeviceData() {}                                       // will be overriden in generated class
+  virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class                                   
 
 protected:
 
-  void kernel2D_ExtractBrightPixels(int tidX, int tidY, const float4* inData4f, float4* a_brightPixels);
+  void kernel2D_ExtractBrightPixels(int tidX, int tidY, const float4* inData4f, float4 testData, float4* a_brightPixels);
   void kernel2D_DownSample4x(int x, int y, const float4* a_daraFullRes, float4* a_dataSmallRes);
   void kernel2D_BlurX(int tidX, int tidY, const float4* a_dataIn, float4* a_dataOut);
   void kernel2D_BlurY(int tidX, int tidY, const float4* a_dataIn, float4* a_dataOut);

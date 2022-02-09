@@ -27,9 +27,9 @@ include_directories("../volk" "../LiteMath")
 link_directories("../volk")
 
 include_directories(../vkutils)
-
-find_package(glfw3 REQUIRED)
 include_directories(${GLFW_INCLUDE_DIRS})
+
+add_compile_definitions(USE_VOLK)
 
 #uncomment this to detect broken memory problems via gcc sanitizers
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined -fsanitize=bounds-strict")
@@ -46,12 +46,6 @@ set(VKUTILS_NEW_SRC ../vkutils/vk_copy.cpp
         ../vkutils/geom/vk_mesh.cpp
         ../vkutils/geom/cmesh.cpp)
 
-#set(NBODY_VIS render/create_render.cpp
-#        render/points_render.cpp
-#        render/points_render_compute.cpp
-#        generated_userfix.cpp
-#        glfw_window.cpp)
-
 add_executable(testapp
         main.cpp
         test_class.cpp
@@ -59,8 +53,6 @@ add_executable(testapp
         test_class_generated_ds.cpp
         stb_image_write.h
         test_class_generated_init.cpp
-#        ${NBODY_VIS}
-#        test_vector.cpp
         test_class_gpu.cpp
         ${VKUTILS_NEW_SRC}
         )

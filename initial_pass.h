@@ -38,10 +38,12 @@ namespace kslicer
     bool VisitTypeDecl     (TypeDecl* record);
     bool VisitVarDecl      (VarDecl* pTargetVar);
   
-    std::unordered_map<std::string, KernelInfo>           functions;
-    std::unordered_map<std::string, DataMemberInfo>       dataMembers;
+    std::unordered_map<std::string, KernelInfo>                  functions;
+    std::unordered_map<std::string, DataMemberInfo>              dataMembers;
     std::unordered_map<std::string, const clang::CXXMethodDecl*> m_mainFuncNodes;
     std::unordered_map<std::string, const clang::CXXMethodDecl*> m_setters;
+    std::unordered_map<std::string, const clang::CXXMethodDecl*> allMemberFunctions;
+    //std::unordered_map<std::string, const clang::CXXMethodDecl*> allMemberFuncByDecl;
   
     std::unordered_map<std::string, KernelInfo>           otherFunctions;
     std::vector<const clang::CXXConstructorDecl* >        ctors;
@@ -50,9 +52,12 @@ namespace kslicer
     std::vector<const clang::CXXRecordDecl*> m_classList;
     std::vector<kslicer::DeclInClass> GetExtractedDecls();
 
+    const std::unordered_map<std::string, kslicer::DeclInClass>& GetOtherTypeDecls() const { return m_storedDecl;}
+
   private:
     void ProcessKernelDef(const CXXMethodDecl *f,  std::unordered_map<std::string, KernelInfo>& a_funcList, const std::string& a_className);
     bool NeedToProcessDeclInFile(std::string a_fileName);
+    bool IsMainClassName(const std::string& a_typeName);
 
     CompilerInstance&     m_compiler;
     const ASTContext&     m_astContext;
@@ -63,6 +68,7 @@ namespace kslicer
 
     uint32_t m_currId = 0;
     std::unordered_map<std::string, kslicer::DeclInClass> m_transferredDecl;
+    std::unordered_map<std::string, kslicer::DeclInClass> m_storedDecl;
   };
   
   class InitialPassASTConsumer : public ASTConsumer

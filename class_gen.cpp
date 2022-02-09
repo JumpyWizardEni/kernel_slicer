@@ -140,35 +140,55 @@ static std::string GetControlFuncDeclText(const clang::FunctionDecl* fDecl, clan
   for(unsigned i=0;i<fDecl->getNumParams();i++)
   {
     auto pParam = fDecl->getParamDecl(i);
-    const clang::QualType typeOfParam =	pParam->getType();
-    std::string typeStr = typeOfParam.getAsString();
-    //if(!typeOfParam->isPointerType())
-    //{
-      text += kslicer::GetRangeSourceCode(pParam->getSourceRange(), compiler);
-      if(i!=fDecl->getNumParams()-1)
-        text += ", ";
-    //}
+    //const clang::QualType typeOfParam =	pParam->getType();
+    //std::string typeStr = typeOfParam.getAsString();
+    text += kslicer::GetRangeSourceCode(pParam->getSourceRange(), compiler);
+    if(i!=fDecl->getNumParams()-1)
+      text += ", ";
   }
 
   return text + ")";
 }
 
+static std::string GetOriginalDeclText(const clang::FunctionDecl* fDecl, clang::CompilerInstance& compiler, bool isRTV)
+{
+  std::string text = fDecl->getNameInfo().getName().getAsString();
+  if(isRTV)
+    text += "Block";
+  text += "(";
+  for(unsigned i=0;i<fDecl->getNumParams();i++)
+  {
+    auto pParam = fDecl->getParamDecl(i);
+    //const clang::QualType typeOfParam =	pParam->getType();
+    //std::string typeStr = typeOfParam.getAsString();
+    text += kslicer::GetRangeSourceCode(pParam->getSourceRange(), compiler);
+    if(i!=fDecl->getNumParams()-1)
+      text += ", ";
+  }
+  
+  if(isRTV)
+  {
+    if(fDecl->getNumParams() != 0)
+      text += ", ";
+    text += "uint32_t a_numPasses";
+  }
+  return text + ")";
+}
 
 void kslicer::MainClassInfo::GetCFSourceCodeCmd(MainFuncInfo& a_mainFunc, clang::CompilerInstance& compiler, bool a_megakernelRTV)
 {
   //const std::string&   a_mainClassName = this->mainClassName;
-  const CXXMethodDecl* a_node          = a_mainFunc.Node;
-  a_mainFunc.GeneratedDecl  = GetCFDeclFromSource(kslicer::GetRangeSourceCode(a_node->getCanonicalDecl()->getSourceRange(), compiler));
-  const auto inOutParamList = kslicer::ListParamsOfMainFunc(a_node);
+  const CXXMethodDecl* a_node = a_mainFunc.Node;
+  const auto inOutParamList   = kslicer::ListParamsOfMainFunc(a_node, compiler);
 
   const auto funcBody = a_node->getBody();
   clang::SourceLocation b(funcBody->getBeginLoc()), _e(funcBody->getEndLoc());
   clang::SourceLocation e(clang::Lexer::getLocForEndOfToken(_e, 0, compiler.getSourceManager(), compiler.getLangOpts()));
-  std::string funcDecl   = GetControlFuncDeclText(a_node, compiler);
 
   a_mainFunc.ReturnType    = a_node->getReturnType().getAsString();
-  a_mainFunc.GeneratedDecl = funcDecl;
+  a_mainFunc.GeneratedDecl = GetControlFuncDeclText(a_node, compiler);
   a_mainFunc.startDSNumber = allDescriptorSetsInfo.size();
+  a_mainFunc.OriginalDecl  = GetOriginalDeclText(a_node, compiler, IsRTV());
   
   if(a_megakernelRTV)
   {
@@ -211,11 +231,34 @@ std::string kslicer::MainClassInfo::GetCFDeclFromSource(const std::string& sourc
   return std::string("virtual ") + mainFuncDeclHead + "Cmd(VkCommandBuffer a_commandBuffer, " + mainFuncDeclTail + ";";
 }
 
-kslicer::InOutVarInfo kslicer::GetParamInfo(const clang::ParmVarDecl* currParam)
+
+std::vector<std::string> ParseSizeAttributeText(const std::string& text)
+{
+  std::string middleText = text.substr(5, text.size()-5-1); // size("w","h") --> "w","h"
+  std::vector<std::string> res;
+  std::stringstream test(middleText);
+  std::string segment;
+
+  while(std::getline(test, segment, ','))
+    res.push_back(segment);
+
+  for(auto& attr : res)
+  {
+    attr.erase(std::remove(attr.begin(), attr.end(), '\"'), attr.end());
+    attr.erase(std::remove(attr.begin(), attr.end(), ' '), attr.end());
+  }
+
+  return res;
+}
+
+
+kslicer::InOutVarInfo kslicer::GetParamInfo(const clang::ParmVarDecl* currParam, const clang::CompilerInstance& compiler)
 {
   auto tidNames = GetAllPredefinedThreadIdNamesRTV();
   const clang::QualType qt = currParam->getType();
   
+  auto argInfo = kslicer::ProcessParameter(currParam); 
+
   InOutVarInfo var;
   var.name      = currParam->getNameAsString();
   var.type      = qt.getAsString();
@@ -223,12 +266,15 @@ kslicer::InOutVarInfo kslicer::GetParamInfo(const clang::ParmVarDecl* currParam)
   if(qt->isPointerType())
   {
     var.kind    = DATA_KIND::KIND_POINTER;
-    var.isConst = qt.isConstQualified();
+    var.isConst = qt->getPointeeType().isConstQualified();
   }
   else if(qt->isReferenceType() && kslicer::IsTexture(qt))
   {
-    var.kind    = DATA_KIND::KIND_TEXTURE;
-    var.isConst = qt.isConstQualified();
+    auto objType          = qt.getNonReferenceType(); 
+    var.kind              = DATA_KIND::KIND_TEXTURE;
+    var.isConst           = objType.isConstQualified();
+    var.containerType     = argInfo.containerType;
+    var.containerDataType = argInfo.containerDataType;
   }
   else if(id != tidNames.end())
   {
@@ -238,15 +284,25 @@ kslicer::InOutVarInfo kslicer::GetParamInfo(const clang::ParmVarDecl* currParam)
   }
   
   var.paramNode = currParam;
+  if(currParam->hasAttrs())
+  {
+    auto attrs = currParam->getAttrs();
+    for(const auto& attr : attrs)
+    {
+      const std::string text = kslicer::GetRangeSourceCode(attr->getRange(), compiler);
+      if(text.find("size(") != std::string::npos)
+        var.sizeUserAttr = ParseSizeAttributeText(text);
+    }
+  }
   return var;
 }
 
-std::vector<kslicer::InOutVarInfo> kslicer::ListParamsOfMainFunc(const CXXMethodDecl* a_node)
+std::vector<kslicer::InOutVarInfo> kslicer::ListParamsOfMainFunc(const CXXMethodDecl* a_node, const clang::CompilerInstance& compiler)
 {
   std::vector<InOutVarInfo> params;
   for(unsigned i=0;i<a_node->getNumParams();i++)
   {
-    auto var = GetParamInfo(a_node->getParamDecl(i));
+    auto var = GetParamInfo(a_node->getParamDecl(i), compiler);
     params.push_back(var);
   }
 

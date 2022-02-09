@@ -18,10 +18,8 @@ std::string kslicer::FunctionRewriter::RewriteStdVectorTypeStr(const std::string
   ReplaceFirst(typeStr, "const ",    "");
   ReplaceFirst(typeStr, m_codeInfo->mainClassName + "::", "");
   ReplaceFirst(typeStr, "struct float4x4", "float4x4");       // small inconvinience in math library
-
   if(isConst)
     typeStr = std::string("const ") + typeStr;
-
   return typeStr;
 }
 
@@ -65,7 +63,7 @@ std::string GetFolderPath(const std::string& a_filePath);
 void kslicer::ClspvCompiler::GenerateShaders(nlohmann::json& a_kernelsJson, const MainClassInfo* a_codeInfo) 
 {
   const auto& mainClassFileName       = a_codeInfo->mainClassFileName;
-  const auto& includeToShadersFolders = a_codeInfo->includeToShadersFolders;
+  const auto& ignoreFolders = a_codeInfo->ignoreFolders;
   
   std::string folderPath = GetFolderPath(mainClassFileName);
   std::string incUBOPath = folderPath + "/include";
@@ -83,7 +81,7 @@ void kslicer::ClspvCompiler::GenerateShaders(nlohmann::json& a_kernelsJson, cons
   buildSH << "#!/bin/sh" << std::endl;
   std::string build = this->BuildCommand();
   buildSH << build.c_str() << " ";
-  for(auto folder : includeToShadersFolders)
+  for(auto folder : ignoreFolders)
     buildSH << "-I" << folder.c_str() << " ";
   buildSH << std::endl;
   buildSH.close();

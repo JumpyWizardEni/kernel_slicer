@@ -84,9 +84,7 @@ std::string kslicer::MainFunctionRewriter::MakeKernelCallCmdString(CXXMemberCall
 
   // extract arguments to form correct descriptor set
   // 
-  //std::stringstream strOut1;
-  //strOut1 << "_" << m_dsTagId;                                                    
-  const auto args     = ExtractArgumentsOfAKernelCall(f);                                          
+  const auto args     = ExtractArgumentsOfAKernelCall(f, m_mainFunc.ExcludeList);                                          
   const auto callSign = MakeKernellCallSignature(m_mainFuncName, args, pKernelInfo->second.usedContainers); // + strOut1.str();
   auto p2 = dsIdBySignature.find(callSign);
   if(p2 == dsIdBySignature.end())
@@ -209,7 +207,7 @@ std::string kslicer::MainFunctionRewriter::MakeServiceKernelCallCmdString(CallEx
                                             // for example it can be 'MyMemcpy' for 'memcpy' if in host code we have (MyMemcpyLayout, MyMemcpyPipeline, MyMemcpyDSLayout)
                                             // please note that you should init MyMemcpyLayout, MyMemcpyPipeline, MyMemcpyDSLayout yourself in the generated code!                                      
   
-  auto memCpyArgs = ExtractArgumentsOfAKernelCall(call);
+  auto memCpyArgs = ExtractArgumentsOfAKernelCall(call, m_mainFunc.ExcludeList);
 
   std::vector<ArgReferenceOnCall> args(2); // TODO: extract corretc arguments from memcpy (CallExpr* call)
   {
@@ -384,7 +382,7 @@ bool kslicer::IsPointerContainer(const std::string& a_typeName)
 }
 
 
-std::vector<kslicer::ArgReferenceOnCall> kslicer::MainFunctionRewriter::ExtractArgumentsOfAKernelCall(CallExpr* f)
+std::vector<kslicer::ArgReferenceOnCall> kslicer::MainFunctionRewriter::ExtractArgumentsOfAKernelCall(CallExpr* f, const std::unordered_set<std::string>& a_excludeList)
 {
   std::vector<kslicer::ArgReferenceOnCall> args; 
   args.reserve(20);
@@ -395,13 +393,41 @@ std::vector<kslicer::ArgReferenceOnCall> kslicer::MainFunctionRewriter::ExtractA
   {
     const Expr* currArgExpr = f->getArgs()[i];
     const clang::QualType q = currArgExpr->getType();
-
-    auto sourceRange = currArgExpr->getSourceRange();
-    std::string text = GetRangeSourceCode(sourceRange, m_compiler);
+    std::string text        = GetRangeSourceCode(currArgExpr->getSourceRange(), m_compiler);
   
+    // check if this is conbst variable which is declared inside control func
+    //
+    bool isConstFound = false;
+    bool isLiteral    = false;
+    for(size_t i=0; i<m_pCodeInfo->mainFunc.size();i++) 
+    {
+      if(m_pCodeInfo->mainFunc[i].Name == m_mainFuncName)
+      {
+        auto& localVars = m_pCodeInfo->mainFunc[i].LocalConst;
+        auto p          = localVars.find(text);
+        if(p != localVars.end())
+          isConstFound = p->second.isConst;
+        break;
+      }
+    }
+    
+    auto checkExpr = currArgExpr;
+    if(clang::isa<clang::ImplicitCastExpr>(checkExpr))
+    {
+      const clang::ImplicitCastExpr* cast = clang::dyn_cast<clang::ImplicitCastExpr>(checkExpr);
+      checkExpr = cast->getSubExpr();
+    }
+
+    if(clang::isa<clang::IntegerLiteral>(checkExpr) || clang::isa<clang::FloatingLiteral>(checkExpr) || clang::isa<clang::CXXBoolLiteralExpr>(checkExpr) || clang::isa<clang::CompoundLiteralExpr>(checkExpr))
+    {
+      isConstFound = true;
+      isLiteral    = true;
+    }
+
     ArgReferenceOnCall arg; 
-    arg.type    = q.getAsString();
-    arg.isConst = q.isConstQualified();
+    arg.type          = q.getAsString();
+    arg.isConst       = q.isConstQualified() || isConstFound;
+    arg.isExcludedRTV = (a_excludeList.find(text) != a_excludeList.end());
     if(text[0] == '&')
     {
       arg.umpersanned = true;
@@ -431,6 +457,11 @@ std::vector<kslicer::ArgReferenceOnCall> kslicer::MainFunctionRewriter::ExtractA
       if(pClassVar != m_allClassMembers.end()) // if not found, probably this is an argument of control function. Not an error. Process in later.
         pClassVar->second.usedInMainFn = true;
       arg.kind      = DATA_KIND::KIND_TEXTURE;
+    }
+    else if(isConstFound || isLiteral)
+    {
+      arg.argType = KERN_CALL_ARG_TYPE::ARG_REFERENCE_CONST_OR_LITERAL;
+      arg.kind    = DATA_KIND::KIND_POD;
     }
 
     auto elementId = std::find(predefinedNames.begin(), predefinedNames.end(), text); // exclude predefined names from arguments

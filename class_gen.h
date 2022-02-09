@@ -54,7 +54,7 @@ namespace kslicer
 
   private:
 
-    std::vector<ArgReferenceOnCall> ExtractArgumentsOfAKernelCall(CallExpr* f);
+    std::vector<ArgReferenceOnCall> ExtractArgumentsOfAKernelCall(CallExpr* f, const std::unordered_set<std::string>& a_excludeList);
     std::string MakeKernelCallCmdString(CXXMemberCallExpr* f);
     std::string MakeServiceKernelCallCmdString(CallExpr* call);
 
@@ -102,7 +102,7 @@ namespace kslicer
 
   };
 
-  std::vector<InOutVarInfo> ListParamsOfMainFunc(const CXXMethodDecl* a_node);
+  std::vector<InOutVarInfo> ListParamsOfMainFunc(const CXXMethodDecl* a_node, const clang::CompilerInstance& compiler);
   
   ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   ///////////////////////////////////////////  NodesMarker  //////////////////////////////////////////////////////////

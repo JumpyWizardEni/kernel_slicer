@@ -250,4 +250,3 @@ void Solver::setParameters(int size, const vector<float> &density, const vector<
 }
 
 Solver::Solver() = default;
-

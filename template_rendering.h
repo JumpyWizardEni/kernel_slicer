@@ -8,10 +8,8 @@
 
 namespace kslicer
 {
-  void PrintVulkanBasicsFile(const std::string& a_declTemplateFilePath, const MainClassInfo& a_classInfo);
-
   nlohmann::json PrepareJsonForAllCPP(const MainClassInfo& a_classInfo, const clang::CompilerInstance& compiler, 
-                                      const std::vector<MainFuncInfo>& a_methodsToGenerate, 
+                                      const std::vector<MainFuncInfo>& a_methodsToGenerate, const std::vector<kslicer::DeclInClass>& usedDecl,
                                       const std::string& a_genIncude, const uint32_t threadsOrder[3],
                                       const std::string& uboIncludeName, const nlohmann::json& uboJson);
 

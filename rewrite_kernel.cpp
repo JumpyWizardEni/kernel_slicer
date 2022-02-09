@@ -25,8 +25,7 @@ bool kslicer::KernelRewriter::VisitForStmt(clang::ForStmt* forLoop)
   const clang::Decl*     initVarD  = initVarDS->getSingleDecl();
   if(!clang::isa<clang::VarDecl>(initVarD))
     return true;  
-  const clang::VarDecl* initVar = clang::dyn_cast<clang::VarDecl>(initVarD);
-  
+  const clang::VarDecl* initVar        = clang::dyn_cast<clang::VarDecl>(initVarD);
   const clang::SourceRange startRange  = initVar->getAnyInitializer()->getSourceRange();
   const clang::SourceRange sizeRange   = loopSize->getSourceRange();
   const clang::SourceRange strideRange = loopStride->getSourceRange();
@@ -34,6 +33,13 @@ bool kslicer::KernelRewriter::VisitForStmt(clang::ForStmt* forLoop)
   const std::string startText  = kslicer::GetRangeSourceCode(startRange, m_compiler);
   const std::string sizeText   = kslicer::GetRangeSourceCode(sizeRange, m_compiler);
   const std::string strideText = kslicer::GetRangeSourceCode(strideRange, m_compiler);
+
+  std::string opCodeStr = "<";
+  if(clang::isa<clang::BinaryOperator>(loopSize))
+  {
+    const clang::BinaryOperator* opCompare = clang::dyn_cast<const clang::BinaryOperator>(loopSize);
+    opCodeStr = opCompare->getOpcodeStr();
+  }
 
   for(auto& loop : m_currKernel.loopIters)
   {
@@ -43,6 +49,10 @@ bool kslicer::KernelRewriter::VisitForStmt(clang::ForStmt* forLoop)
     loop.sizeNode   = loopSize;
     loop.strideNode = loopStride;
     loop.bodyNode   = loopBody;
+    if(opCodeStr == "<=")
+      loop.condKind = kslicer::KernelInfo::IPV_LOOP_KIND::LOOP_KIND_LESS_EQUAL;
+    else
+      loop.condKind = kslicer::KernelInfo::IPV_LOOP_KIND::LOOP_KIND_LESS;
   }
 
   return true;
@@ -134,8 +144,10 @@ bool kslicer::KernelRewriter::NeedToRewriteMemberExpr(const clang::MemberExpr* e
         break;
       }
     }
+    
+    bool isKernel = m_codeInfo->IsKernel(m_currKernel.name);
 
-    if(foundId != size_t(-1)) // else we didn't found 'payload' in kernela arguments, so just ignore it
+    if(foundId != size_t(-1)) // else we didn't found 'payload' in kernel arguments, so just ignore it
     {
       // now split 'payload->xxx' to 'payload' (baseName) and 'xxx' (memberName); 
       // 
@@ -152,6 +164,17 @@ bool kslicer::KernelRewriter::NeedToRewriteMemberExpr(const clang::MemberExpr* e
       else if(needOffset)
       {
         out_text = baseName + "[" + m_fakeOffsetExp + "]." + memberName;
+        return true;
+      }
+    }
+    else if(!isKernel && m_codeInfo->pShaderCC->IsGLSL()) // for common member functions
+    {
+      const std::string exprContent = GetRangeSourceCode(expr->getSourceRange(), m_compiler);
+      auto pos = exprContent.find("->");
+      if(pos != std::string::npos) 
+      {
+        const std::string memberName = exprContent.substr(pos+2);
+        out_text = baseName + "." + memberName;
         return true;
       }
     }
@@ -203,7 +226,7 @@ bool kslicer::KernelRewriter::VisitMemberExpr_Impl(clang::MemberExpr* expr)
       kslicer::UsedContainerInfo container;
       container.type     = qt.getAsString();
       container.name     = setter + "_" + containerName;            
-      container.kind     = kslicer::GetKindOfType(qt, false);
+      container.kind     = kslicer::GetKindOfType(qt);
       container.isConst  = qt.isConstQualified();
       container.isSetter = true;
       container.setterPrefix = setter;
@@ -500,6 +523,17 @@ bool kslicer::KernelRewriter::VisitReturnStmt_Impl(ReturnStmt* ret)
   }
 
   return true;
+}
+
+bool kslicer::KernelRewriter::NameNeedsFakeOffset(const std::string& a_name) const
+{
+   bool exclude = false;
+   for(auto arg : m_currKernel.args)
+   {
+     if(arg.needFakeOffset && arg.name == a_name)
+       exclude = true;
+   }
+   return exclude;
 }
 
 

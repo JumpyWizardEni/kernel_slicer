@@ -29,7 +29,18 @@ namespace kslicer
   struct IShaderCompiler;
   enum class VKERNEL_IMPL_TYPE { VKERNEL_SWITCH = 0, VKERNEL_INDIRECT_DISPATCH=2 };
   
-  enum class DATA_KIND  { KIND_UNKNOWN = 0, KIND_POD = 1, KIND_POINTER = 2, KIND_VECTOR = 3, KIND_TEXTURE = 4, KIND_ACCEL_STRUCT=5, KIND_HASH_TABLE=6, KIND_SAMPLER=7 };
+  enum class DATA_KIND  { KIND_UNKNOWN = 0, 
+                          KIND_POD,                             ///<! Any Plain Old Data
+                          KIND_POINTER,                         ///<! float*
+                          KIND_VECTOR,                          ///<! std::vector<float>
+                          KIND_TEXTURE,                         ///<! Texture2D<uchar4>
+                          KIND_TEXTURE_SAMPLER_COMBINED,        ///<! std::shared_ptr<ITexture2DCombined>
+                          KIND_TEXTURE_SAMPLER_COMBINED_ARRAY,  ///<! std::vector< std::shared_ptr<ITexture2DCombined> >
+                          KIND_ACCEL_STRUCT,                    ///<! std::shared_ptr<ISceneObject>
+                          KIND_HASH_TABLE,                      ///<! std::unordered_map<uint32_t,uint32_t> 
+                          KIND_SAMPLER                          ///<! Sampler
+                          };                       
+  
   enum class DATA_USAGE { USAGE_USER = 0, USAGE_SLICER_REDUCTION = 1 };
   enum class TEX_ACCESS { TEX_ACCESS_NOTHING = 0, TEX_ACCESS_READ = 1, TEX_ACCESS_WRITE = 2, TEX_ACCESS_SAMPLE = 4 };
 
@@ -130,6 +141,8 @@ namespace kslicer
       bool IsUser()    const { return !isThreadID && !isLoopSize && !needFakeOffset && !IsPointer() && !IsTexture() && !isContainer; }
     };
 
+    enum class IPV_LOOP_KIND  { LOOP_KIND_LESS = 0, LOOP_KIND_LESS_EQUAL = 1};
+
     struct LoopIter 
     {
       std::string type;
@@ -148,6 +161,7 @@ namespace kslicer
 
       uint32_t    loopNesting = 0;       ///<! 
       uint32_t    id;                    ///<! used to preserve or change loops order
+      IPV_LOOP_KIND condKind = IPV_LOOP_KIND::LOOP_KIND_LESS;
     };
     
     enum class REDUCTION_TYPE {ADD_ONE = 1, ADD = 2, MUL = 3, FUNC = 4, SUB = 5, SUB_ONE,  UNKNOWN = 255};
@@ -266,20 +280,25 @@ namespace kslicer
     size_t      sizeInBytes          = 0; ///<! may be not needed due to using sizeof in generated code, but it is useful for sorting members by size and making apropriate aligment
     size_t      alignedSizeInBytes   = 0; ///<! aligned size will be known when data will be placed to a buffer
     size_t      offsetInTargetBuffer = 0; ///<! offset in bytes in terget buffer that stores all data members
-    
+    size_t      aligmentGLSL         = sizeof(int); ///<! aligment which GLSL compiler does anyway (we can't control that)
+
     bool isContainerInfo   = false; ///<! auto generated std::vector<T>::size() or capacity() or some analogue
     bool isContainer       = false; ///<! if std::vector<...>
     bool isArray           = false; ///<! if is array, element type stored in containerDataType;
     bool usedInKernel      = false; ///<! if any kernel use the member --> true; if no one uses --> false;
     bool usedInMainFn      = false; ///<! if std::vector is used in MainFunction like vector.data();
     bool isPointer         = false;
-    
+    bool isConst           = false; ///<! const float4 BACKGROUND_COLOR = ... (they should not be read back)
+
     DATA_USAGE usage = DATA_USAGE::USAGE_USER;         ///<! if this is service and 'implicit' data which was agged by generator, not by user;
     TEX_ACCESS tmask = TEX_ACCESS::TEX_ACCESS_NOTHING; ///<! store texture access flags if this data member is a texture
 
     size_t      arraySize = 0;     ///<! 'N' if data is declared as 'array[N]';
     std::string containerType;     ///<! std::vector usually
     std::string containerDataType; ///<! data type 'T' inside of std::vector<T>
+
+    clang::TypeDecl* pTypeDeclIfRecord = nullptr;
+    clang::TypeDecl* pContainerDataTypeDeclIfRecord = nullptr;
 
     bool IsUsedTexture() const { return isContainer && IsTextureContainer(containerType); }  // && isContainer && kslicer::IsTexture(containerType); }
   };
@@ -294,6 +313,7 @@ namespace kslicer
     size_t      sizeInBytes;
 
     bool        isArray   = false;
+    bool        isConst   = false;
     size_t      arraySize = 0;
     std::string typeOfArrayElement;
     size_t      sizeInBytesOfArrayElement = 0;
@@ -310,11 +330,16 @@ namespace kslicer
     bool isConst     = false;
     bool isThreadId  = false;
     bool isTexture() const { return (kind == DATA_KIND::KIND_TEXTURE); };
+    bool isPointer() const { return (kind == DATA_KIND::KIND_POINTER); };
 
     const clang::ParmVarDecl* paramNode = nullptr;
+    std::vector<std::string> sizeUserAttr;
+    std::string containerType;
+    std::string containerDataType;
   };
 
-  InOutVarInfo GetParamInfo(const clang::ParmVarDecl* currParam);
+  InOutVarInfo GetParamInfo(const clang::ParmVarDecl* currParam, const clang::CompilerInstance& compiler);
+  std::unordered_set<std::string> ListPredefinedMathTypes();
 
   // assume there could be only 4 form of kernel arg when kernel is called
   //
@@ -324,6 +349,7 @@ namespace kslicer
     ARG_REFERENCE_CLASS_VECTOR  = 2, // Passing a pointer to a class member of type std::vector<T>::data() (for example m_materials.data())
     ARG_REFERENCE_CLASS_POD     = 3, // Passing a pointer to a member of the class of type plain old data. For example, "&m_worldViewProjInv"
     ARG_REFERENCE_THREAD_ID     = 4, // Passing tidX, tidY or tidZ
+    ARG_REFERENCE_CONST_OR_LITERAL = 5, // Passing const variables or literals (numbers)
     ARG_REFERENCE_UNKNOWN_TYPE  = 9  // Unknown type of arument yet. Generaly means we need to furthe process it, for example find among class variables or local variables
     };
 
@@ -336,7 +362,8 @@ namespace kslicer
     
     bool isConst               = false;
     bool umpersanned           = false; // just signal that '&' was applied to this argument, and thus it is likely to be (ARG_REFERENCE_LOCAL or ARG_REFERENCE_CLASS_POD)
-    
+    bool isExcludedRTV         = false;
+
     bool isTexture    () const { return (kind == DATA_KIND::KIND_TEXTURE); }
     bool isAccelStruct() const { return (kind == DATA_KIND::KIND_ACCEL_STRUCT); }
   };
@@ -374,6 +401,7 @@ namespace kslicer
     std::string                                       Name;
     const clang::CXXMethodDecl*                       Node;
     std::unordered_map<std::string, DataLocalVarInfo> Locals;
+    std::unordered_map<std::string, DataLocalVarInfo> LocalConst;
     std::vector<InOutVarInfo>                         InOuts;
     std::unordered_set<std::string>                   ExcludeList;
     std::unordered_set<std::string>                   UsedKernels;
@@ -384,6 +412,7 @@ namespace kslicer
     std::string ReturnType;
     std::string GeneratedDecl;
     std::string CodeGenerated;
+    std::string OriginalDecl;
     std::string MegaKernelCall;
 
     size_t startDSNumber = 0;
@@ -433,6 +462,7 @@ namespace kslicer
     DECL_IN_CLASS      kind  = DECL_IN_CLASS::DECL_UNKNOWN;
     bool               extracted = false;
     bool               isArray   = false;
+    bool               inClass   = false;
     uint32_t           arraySize = 0;
   };
 
@@ -456,6 +486,7 @@ namespace kslicer
                      m_rewriter(R), m_compiler(a_compiler), m_codeInfo(a_codeInfo)
     { 
       m_pRewrittenNodes = std::make_shared< std::unordered_set<uint64_t> >();
+      m_predefinedTypes = ListPredefinedMathTypes();
     }
 
     virtual ~FunctionRewriter(){}
@@ -498,6 +529,8 @@ namespace kslicer
     MainClassInfo*                 m_codeInfo;
     ///////////////////////////////////////////////////////////////////////////////////////////////////
     
+    std::unordered_set<std::string> m_predefinedTypes;
+
     void MarkRewritten(const clang::Stmt* expr);
     bool WasNotRewrittenYet(const clang::Stmt* expr);
 
@@ -573,6 +606,7 @@ namespace kslicer
 
     virtual void ClearUserArgs() { }
     virtual ShaderFeatures GetKernelShaderFeatures() const { return ShaderFeatures(); }
+    bool NameNeedsFakeOffset(const std::string& a_name) const;
 
   protected:
 
@@ -751,6 +785,10 @@ namespace kslicer
     std::unordered_map<std::string, KernelInfo>     allOtherKernels;  ///<! kernels from other classes. we probably need them if they are used.
     std::unordered_map<std::string, DataMemberInfo> allDataMembers;   ///<! list of all class data members;
     std::unordered_set<std::string>                 usedServiceCalls; ///<! memcpy, memset and e.t.c.
+    
+    std::unordered_map<std::string, const clang::CXXMethodDecl*> allMemberFunctions;  ///<! in fact this is used for a specific case, RTV pattern, full impl function, check for user define 'XXXBlock' function for control function 'XXX'
+                                                                                      ///<! and we do not support overloading here ...
+    //std::unordered_map<std::string, const clang::CXXMethodDecl*> allMemberFuncByDecl; ///<! need this to get function source code by function declaration
 
     std::unordered_map<std::string, KernelInfo> kernels;            ///<! only those kernels which are called from 'Main'/'Control' functions
     std::unordered_map<std::string, KernelInfo> megakernelsByName;  ///<! megakernels for RTV pattern
@@ -768,7 +806,7 @@ namespace kslicer
     const clang::CXXRecordDecl* mainClassASTNode = nullptr;
     std::vector<const clang::CXXConstructorDecl* > ctors;
 
-    std::vector<std::string> includeToShadersFolders;
+    std::vector<std::string> ignoreFolders;
     std::vector<std::string> includeCPPFolders;  
    
 
@@ -877,6 +915,11 @@ namespace kslicer
     virtual const std::unordered_map<std::string, DHierarchy>& GetDispatchingHierarchies() const { return m_vhierarchy; }
     virtual std::unordered_map<std::string, DHierarchy>&       GetDispatchingHierarchies()       { return m_vhierarchy; }
     
+    std::unordered_set<std::string> ExtractTypesFromUsedContainers(const std::unordered_map<std::string, kslicer::DeclInClass>& a_otherDecls);
+    void ProcessMemberTypes(const std::unordered_map<std::string, kslicer::DeclInClass>& a_otherDecls, clang::SourceManager& a_srcMgr,
+                            std::vector<kslicer::DeclInClass>& generalDecls);
+
+    void ProcessMemberTypesAligment(std::vector<DataMemberInfo>& a_members, const std::unordered_map<std::string, kslicer::DeclInClass>& a_otherDecls);
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
     std::vector<std::string>                           m_setterStructDecls;
@@ -979,7 +1022,7 @@ namespace kslicer
   bool IsVectorContainer(const std::string& a_typeName);
   bool IsPointerContainer(const std::string& a_typeName);
 
-  void SplitContainerTypes(const clang::ClassTemplateSpecializationDecl* specDecl, std::string& a_containerType, std::string& a_containerDataType);
+  clang::TypeDecl* SplitContainerTypes(const clang::ClassTemplateSpecializationDecl* specDecl, std::string& a_containerType, std::string& a_containerDataType);
   std::string GetDSArgName(const std::string& a_mainFuncName, const kslicer::ArgReferenceOnCall& a_arg, bool a_megakernel);
   std::string GetDSVulkanAccessLayout(TEX_ACCESS a_accessMask);
   std::string GetDSVulkanAccessMask(TEX_ACCESS a_accessMask);
@@ -993,10 +1036,15 @@ namespace kslicer
   KernelInfo                     joinToMegaKernel        (const std::vector<const KernelInfo*>& a_kernels, const MainFuncInfo& cf);
   std::string                    GetCFMegaKernelCall     (const MainFuncInfo& a_mainFunc); 
   
-  DATA_KIND GetKindOfType(const clang::QualType qt, bool isContainer);
+  DATA_KIND GetKindOfType(const clang::QualType qt);
   CPP11_ATTR GetMethodAttr(const clang::CXXMethodDecl* f, clang::CompilerInstance& a_compiler);
 
   KernelInfo::ArgInfo ProcessParameter(const clang::ParmVarDecl *p); 
+  void CheckInterlanIncInExcludedFolders(const std::vector<std::string>& a_folders);
+
+  std::string CleanTypeName(const std::string& a_str);
+  
+  bool IsInExcludedFolder(const std::string& fileName, const std::vector<std::string>& a_excludeFolderList);
 }
 
 template <typename Cont, typename Pred>

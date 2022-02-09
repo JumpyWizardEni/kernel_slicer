@@ -2,6 +2,7 @@
 #include <test_class.h>
 #include "render/points_render.h"
 #include "glfw_window.h"
+#include "ArgParser.h"
 
 std::vector<nBody::BodyState> n_body_cpu(uint32_t seed, uint32_t iterations);
 std::vector<nBody::BodyState> n_body_gpu(uint32_t seed, uint32_t iterations);
@@ -56,6 +57,7 @@ int compute_main()
 
   for(const auto i : badId)
   {
+    failed = true;
     std::cout << "Wrong position " << i << std::endl;
     std::cout << "CPU value: " << out_cpu[i].pos_weight.x << "\t" << out_cpu[i].pos_weight.y << "\t" << out_cpu[i].pos_weight.z << "\t" << out_cpu[i].pos_weight.w << std::endl;
     std::cout << "GPU value: " << out_gpu[i].pos_weight.x << "\t" << out_gpu[i].pos_weight.y << "\t" << out_gpu[i].pos_weight.z << "\t" << out_gpu[i].pos_weight.w << std::endl;
@@ -63,6 +65,7 @@ int compute_main()
 
   for(const auto i : badId2)
   {
+    failed = true;
     std::cout << "Wrong velocity " << i << std::endl;
     std::cout << "CPU value: " << out_cpu[i].vel_charge.x << "\t" << out_cpu[i].vel_charge.y << "\t" << out_cpu[i].vel_charge.z << "\t" << out_cpu[i].vel_charge.w << std::endl;
     std::cout << "GPU value: " << out_gpu[i].vel_charge.x << "\t" << out_gpu[i].vel_charge.y << "\t" << out_gpu[i].vel_charge.z << "\t" << out_gpu[i].vel_charge.w << std::endl;
@@ -70,6 +73,7 @@ int compute_main()
 
   if (failed) {
     std::cout << "FAIL" << std::endl;
+    return -1;
   } else {
     std::cout << "OK" << std::endl;
   }
@@ -95,6 +99,13 @@ int graphics_main()
 
 int main(int argc, const char** argv)
 {
-  graphics_main();
-//  compute_main();
+  ArgParser args(argc, argv);
+  bool runCmdLineMode = args.hasOption("--test");
+
+  if(runCmdLineMode)
+    return compute_main();
+  else
+    graphics_main();
+
+  return 0;
 }

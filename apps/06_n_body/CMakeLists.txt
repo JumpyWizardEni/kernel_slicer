@@ -23,13 +23,15 @@ message(STATUS ${CMAKE_CURRENT_SOURCE_DIR})
 find_package(OpenMP)
 find_package(Vulkan)
 include_directories(${Vulkan_INCLUDE_DIR})
-include_directories("../volk" "../LiteMath")
+include_directories("../volk" "../LiteMath" "../utils")
 link_directories("../volk")
 
 include_directories(../vkutils)
 
 find_package(glfw3 REQUIRED)
 include_directories(${GLFW_INCLUDE_DIRS})
+
+add_compile_definitions(USE_VOLK)
 
 #uncomment this to detect broken memory problems via gcc sanitizers
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined -fsanitize=bounds-strict")

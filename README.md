@@ -1,5 +1,9 @@
 # kernel_slicer: CPU to GPU (Vulkan) translator
 
+<hr>
+This project is carried out at the Institute of Applied Mathematics Russian Academy of Science (KIAM RAS) and supported by the Russian Science Foundation (RSF) under grant #21-71-00037.
+<hr>
+
 <p align = "center"><img src="images/logo.png" width = "600"></p>
 <p align = "center">Fig. 1. Our translator has many heads due to many existing programming patterns.</p><BR>
 This project is based on clang (fig. 1.). We sincerely thank the clang front-end developers for the great structure and documentation of their project!
@@ -10,7 +14,7 @@ We heavily used clang front-end infrastructure to transform input C++ source cod
 
 The goal of this project is to increase developer productivity when porting CPU code to Vulkan which is time consuming work in general.
 This means cross platform for C++ developers providing them at the same time ability to use any existing and any perspective HW featues of GPUs.
-We did this by accelerating/simplifying software development in Vulkan. Our conept is to provide quick transition from HW-agnostic C++ to GPU version of the same algorithm which can be automated for more than 90% (Fig. 2). The remaining 10% are written by hand and can use any desire HW extensions which, for example, are not supported by kernel_slicer yet.
+We did this by accelerating/simplifying software development in Vulkan. Our conept is to provide quick transition from HW-agnostic C++ to GPU version of the same algorithm which can be automated for more than 90% (Fig. 2). The remaining 10% are written by hand and can use any desire HW extensions which, for example, are not supported by the kernel_slicer yet.
 
 <p align = "center"><img src="images/concept_why.jpg" width = "1081"></p>
 <p align = "center">Fig. 2. Purpose and place of our tool among other GPU programming technologies.</p><BR>
@@ -41,36 +45,31 @@ kernel_slicer is prototype auto-programming tool which takes C++ code as input a
 
 # Build:
 
-0. git clone --recurse-submodules https://github.com/Ray-Tracing-Systems/kernel_slicer
+1. git clone https://github.com/Ray-Tracing-Systems/kernel_slicer
 
-1. sudo apt-get install llvm-12-dev
+2. Download dependencies 
+ * cd kernel_slicer
+ * bash fetch_sources.bat 
 
-2. sudo touch /usr/lib/llvm-12/bin/yaml-bench 
+3. sudo apt-get install llvm-12-dev
 
-3. sudo apt-get install libclang-12-dev 
+4. sudo touch /usr/lib/llvm-12/bin/yaml-bench 
 
-4. use Cmake and make
+5. sudo apt-get install libclang-12-dev 
+
+6. use Cmake and make
 
   * cd kernel_slicer
   * cmake . 
   * make -j 10
 
-5. you may also use provided VS Code config to build and run test cases (tasks.json and launch.json)
+7. you may also use provided VS Code config to build and run test cases (tasks.json and launch.json)
 
-6. (optional) build [google clspv](https://github.com/google/clspv "Clspv is a prototype compiler for a subset of OpenCL C to Vulkan compute shaders") if you want OpenCL shaders
-
-7. Build volk with cmake and leave 'libvolk.a' in 'apps/volk'
-  * git submodule init (if you have forgotten to fetch submodules when clone repo) 
-  * git submodule update (if you have forgotten to fetch submodules when clone repo) 
-  * cd apps/volk
-  * cmake .
-  * make
-
- 
- 
 8. Install Vulkan SDK (https://vulkan.lunarg.com/sdk/home)
 
-9. If you want to [build it as a part of llvm](doc/README_build_with_llvm.md)
+9. (optional) build [google clspv](https://github.com/google/clspv "Clspv is a prototype compiler for a subset of OpenCL C to Vulkan compute shaders") if you want OpenCL shaders
+
+10. (optional) If you want to [build it as a part of llvm](doc/README_build_with_llvm.md)
 
 # Concept and general workflow
 
@@ -122,11 +121,11 @@ Now let us discuss general workflow of using kernel_slicer to port you code to G
 6. Run kernel kslicer with the folowing command line (examples are stored in ".vscode/launch.json") from the project folder (i.e. the folder where this README.md is located): 
 * if use clspv:
 ```
-./kslicer apps/05_filter_bloom_good/test_class.cpp -mainClass ToneMapping -stdlibfolder TINYSTL -pattern ipv -reorderLoops YX -Iapps/LiteMath IncludeToShaders -DKERNEL_SLICER -v
+./kslicer apps/05_filter_bloom_good/test_class.cpp -mainClass ToneMapping -stdlibfolder TINYSTL -pattern ipv -reorderLoops YX -Iapps/LiteMath ignore -DKERNEL_SLICER -v
 ```
 * if use GLSL:
 ```
-./kslicer "apps/05_filter_bloom_good/test_class.cpp"  -mainClass ToneMapping -stdlibfolder TINYSTL -pattern ipv -reorderLoops YX -Iapps/LiteMath IncludeToShaders -shaderCC GLSL -DKERNEL_SLICER -v
+./kslicer "apps/05_filter_bloom_good/test_class.cpp"  -mainClass ToneMapping -stdlibfolder TINYSTL -pattern ipv -reorderLoops YX -Iapps/LiteMath ignore -shaderCC GLSL -DKERNEL_SLICER -v
 ```
 Now generated files should apper in  "apps/05_filter_bloom_good" folder.
 
@@ -212,7 +211,8 @@ class TestClass // main class
   float m_data2[3];                                   // ok
   std::vector<unsigned int>        m_someBufferData1; // ok
   std::vector<MyTestStruct>        m_someBufferData2; // also ok
-  std::vector<MyNestedTestStruct>  m_someBufferData3; // ILLEGAL! NOT YET SUPPORTED!
+  MyNestedTestStruct               m_someBufferData3; // ILLEGAL! NOT YET SUPPORTED!
+  std::vector<MyNestedTestStruct>  m_someBufferData4; // ILLEGAL! NOT YET SUPPORTED!
 };
 ```
 
@@ -275,3 +275,6 @@ In practical applications of Ray Tracing there is a problem with effitiency of c
 
 The documentation for general concepts of how it works is located [here](doc/README_internal.md)
 
+# Acknowlegments
+This project is supported by the Russian Science Foundation (RSF) under grant #21-71-00037.
+ 

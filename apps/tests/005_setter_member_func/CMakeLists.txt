@@ -27,6 +27,8 @@ include_directories(${Vulkan_INCLUDE_DIR})
 include_directories("../../vkutils" "../../volk" "../../LiteMath")
 link_directories("../../volk")
 
+add_compile_definitions(USE_VOLK)
+
 #uncomment this to detect broken memory problems via gcc sanitizers
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined -fsanitize=bounds-strict")
 
@@ -42,7 +44,8 @@ add_executable(testapp main.cpp
                        ../../vkutils/vk_copy.cpp
                        ../../vkutils/vk_buffers.cpp
                        ../../vkutils/vk_pipeline.cpp
-                       ../../vkutils/vk_descriptor_sets.cpp)
+                       ../../vkutils/vk_descriptor_sets.cpp
+                       ../../vkutils/vk_images.cpp)
 
 set_target_properties(testapp PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_link_libraries(testapp LINK_PUBLIC ${Vulkan_LIBRARY} OpenMP::OpenMP_CXX volk dl)

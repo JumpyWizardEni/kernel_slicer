@@ -4,18 +4,17 @@
 #include <cstdint>
 #include <cassert>
 #include <cmath>
+#include <memory>
 
-
-void Denoise_cpu(const int w, const int h, const float* a_hdrData, int32_t* a_inTexColor, const int32_t* a_inNormal, const float* a_inDepth, 
-                 const int a_windowRadius, const int a_blockRadius, const float a_noiseLevel, const char* a_outName);
-
-void Denoise_gpu(const int w, const int h, const float* a_hdrData, int32_t* a_inTexColor, const int32_t* a_inNormal, const float* a_inDepth, 
-                 const int a_windowRadius, const int a_blockRadius, const float a_noiseLevel, const char* a_outName);
+#include "test_class.h"
+#include "Bitmap.h"
+#include "ArgParser.h"
 
 bool LoadHDRImageFromFile(const char* a_fileName, int* pW, int* pH, std::vector<float>& a_data);   // defined in imageutils.cpp
 bool LoadLDRImageFromFile(const char* a_fileName, int* pW, int* pH, std::vector<int32_t>& a_data); // defined in imageutils.cpp
 
-
+#include "vk_context.h"
+std::shared_ptr<Denoise> CreateDenoise_Generated(const int w, const int h, vk_utils::VulkanContext a_ctx, size_t a_maxThreadsGenerated);
 
 int main(int argc, const char** argv)
 {
@@ -25,7 +24,6 @@ int main(int argc, const char** argv)
   std::vector<float>   depth;
 
   int w, h, w2, h2, w3, h3, w4, h4;
-  
   bool hasError = false;
 
   if(!LoadHDRImageFromFile("../images/WasteWhite_1024sample.hdr", &w, &h, hdrData))
@@ -52,7 +50,6 @@ int main(int argc, const char** argv)
     hasError = true;
   }
 
-
   if(w != w2 || h != h2)
   {
     std::cout << "size source image and depth pass not equal.' " << std::endl;
@@ -72,7 +69,7 @@ int main(int argc, const char** argv)
   }
 
   if (hasError)
-    return 0;
+    return -1;
 
 
   uint64_t addressToCkeck = reinterpret_cast<uint64_t>(hdrData.data());
@@ -81,12 +78,43 @@ int main(int argc, const char** argv)
   addressToCkeck = reinterpret_cast<uint64_t>(depth.data());
   assert(addressToCkeck % 16 == 0); // check if address is aligned!!!
   
+  #ifndef NDEBUG
+  bool enableValidationLayers = true;
+  #else
+  bool enableValidationLayers = false;
+  #endif
+
   const int   windowRadius = 7;
   const int   blockRadius  = 3;
   const float noiseLevel   = 0.1F;
+  
+  ArgParser args(argc, argv);
 
-  Denoise_cpu(w, h, hdrData.data(), texColor.data(), normal.data(), depth.data(), windowRadius, blockRadius, noiseLevel, "zout_cpu.bmp");
-  Denoise_gpu(w, h, hdrData.data(), texColor.data(), normal.data(), depth.data(), windowRadius, blockRadius, noiseLevel, "zout_gpu.bmp");  
-              
+  bool onGPU = args.hasOption("--gpu");
+  std::shared_ptr<Denoise> pImpl = nullptr;
+  if(onGPU)
+  {
+    unsigned int a_preferredDeviceId = args.getOptionValue<int>("--gpu_id", 0);
+    auto ctx = vk_utils::globalContextGet(enableValidationLayers, a_preferredDeviceId);
+    pImpl = CreateDenoise_Generated(w, h, ctx, w*h);
+  }
+  else
+    pImpl = std::make_shared<Denoise>(w,h);
+  
+  pImpl->CommitDeviceData();
+
+  std::vector<uint> ldrData(w*h);
+  pImpl->NLM_denoise(w, h, (const float4*)hdrData.data(), ldrData.data(), texColor.data(), normal.data(), (const float4*)depth.data(), windowRadius, blockRadius, noiseLevel);
+
+  if(onGPU)
+    SaveBMP("zout_gpu.bmp", ldrData.data(), w, h);
+  else 
+    SaveBMP("zout_cpu.bmp", ldrData.data(), w, h);
+
+  float timings[4] = {0,0,0,0};
+  pImpl->GetExecutionTime("NLM_denoise", timings);
+  std::cout << "NLM_denoise(exec) = " << timings[0]              << " ms " << std::endl;
+  std::cout << "NLM_denoise(copy) = " << timings[1] + timings[2] << " ms " << std::endl;
+  std::cout << "NLM_denoise(ovrh) = " << timings[3]              << " ms " << std::endl;            
   return 0;
 }

@@ -12,6 +12,8 @@ class RedPixels
 {
 public:
 
+  RedPixels(){}
+
   typedef struct PixelInfoT
   {
     uint32_t value;
@@ -21,10 +23,14 @@ public:
   typedef uint32_t MyHandle;
   
   void SetMaxDataSize(size_t a_size); 
-  void ProcessPixels(uint32_t* a_data, size_t a_dataSize);
+  virtual void ProcessPixels(const uint32_t* a_inData  __attribute__((size("a_dataSize"))),
+                                   uint32_t* a_outData __attribute__((size("a_dataSize"))), size_t a_dataSize);
 
   const std::vector<PixelInfo>& GetFoundPixels() const { return m_foundPixels; }
   const uint32_t                GetRedPixelsAmount() const { return m_redPixelsNum; }
+
+  virtual void CommitDeviceData() {}                                       // will be overriden in generated class
+  virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
 
 //protected:
   

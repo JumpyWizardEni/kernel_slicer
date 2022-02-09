@@ -4,8 +4,6 @@
 #include <memory>
 #include <chrono>
 
-
-
 #include "vk_utils.h"
 #include "vk_pipeline.h"
 #include "vk_copy.h"
@@ -44,12 +42,12 @@ int main(int argc, const char** argv) {
 
     for (int i = 0; i < N * N; ++i)
         vy[i] = randfrom(-5, 5);
-//
+
     auto cpu_res = solve_cpu(N, density, vx, vy);
-    save_image(N,"z_out_cpu.jpg", cpu_res);
-//
+    save_image(N,"zout_cpu.bmp", cpu_res);
+
     auto gpu_res = solve_gpu(N, density, vx, vy);
-    save_image(N, "z_out_gpu.jpg", gpu_res);
+    save_image(N, "zout_gpu.bmp", gpu_res);
 
     return 0;
 }
