@@ -7,7 +7,7 @@
 using std::vector;
 
 const char GRID_SIZE = 5;
-const int GRID_NUM = 64;
+const int GRID_NUM = 5;
 const int SIMULATION_STEPS = 10;
 
 
@@ -53,7 +53,7 @@ void fillSolverData(Solver &solver) {
             } else {
                 double r = randfrom(0, 1);
                 //Остальные заполняем случайно
-                if (r < 0.4) {
+                if (r < 0.1) {
                     spaceTypes[GRID_NUM * i + j] = SpaceType::Empty;
                 } else {
                     spaceTypes[GRID_NUM * i + j] = SpaceType::Fluid;
@@ -62,22 +62,25 @@ void fillSolverData(Solver &solver) {
         }
     }
 
-    vector<float> vx((GRID_NUM + 1) * GRID_NUM);
+    vector<float> vx(GRID_NUM * (GRID_NUM + 1));
     for (int i = 0; i < GRID_NUM * (GRID_NUM + 1); ++i)
         vx[i] = 0;
 
-    vector<float> vy(GRID_NUM * (GRID_NUM + 1));
+    vector<float> vy((GRID_NUM + 1) * GRID_NUM);
     for (int i = 0; i < GRID_NUM * (GRID_NUM + 1); ++i)
         vy[i] = 0;
 
     vector<float> pressure(GRID_NUM * GRID_NUM);
     for (int i = 0; i < GRID_NUM * (GRID_NUM); ++i)
-        pressure[i] = randfrom(-1, 1);
+        pressure[i] = 0;
 
     solver.size = GRID_NUM;
+//    solver.dx = (float) GRID_SIZE / GRID_NUM;
     solver.vx = vx;
     solver.vy = vy;
     solver.spaceTypes = spaceTypes;
     solver.pressure = pressure;
+
+    solver.setParameters();
 }
 

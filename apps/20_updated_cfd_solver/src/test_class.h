@@ -9,20 +9,21 @@ enum class SpaceType {
     Fluid, Solid, Empty
 };
 
+
 class Solver {
 
 public:
     int size = 0; // Количество ячеек по одному направлению
     float dt = 0.1; // Меняется каждый шаг
-    float dx = 0.015; // Размер сетки в условных единицах
+    float dx = 0.125; // Размер сетки в условных единицах
     float density = 1000;
-    const float g = 9.82f; // Ускорение свободного падения
-    const int PCG_MAX_ITERS = 10; // Максимальное число итераций для PCG алгоритма
+    const float g = -9.82f; // Ускорение свободного падения
+    const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
     const float TOL = 1e-5; // epsilon для давления
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
     vector<float> pressure;
-    vector<float> pressureResult;
+    vector<float> pressureResidual;
     vector<float> rhs;
     vector<float> press_diag;
     vector<float> pressX;
@@ -31,18 +32,15 @@ public:
     vector<float> q;
     vector<float> z;
     vector<float> s;
-    vector<float> sygma;
 
     vector<float> velocityExtra;
-
-
-
+    vector<float> velocityExtra2;
 
     vector<SpaceType> spaceTypes;
     vector<SpaceType> spaceTypesOld;
 
-    vector<float> vx; // size + 1, size
-    vector<float> vy; // size, size + 1
+    vector<float> vx; // (size + 1), size
+    vector<float> vy; // size, (size + 1)
 
     vector<float> extraVec;
     vector<float> transferVec;
@@ -51,10 +49,7 @@ public:
 
     Solver();
 
-    void
-    setParameters(int size, const vector<float> &density, const vector<float> &vx, const vector<float> &vy, float dt,
-                  float visc, float diff);
-
+    void setParameters();
 
     void performStep();
 
@@ -63,8 +58,9 @@ public:
 
     void addForces(float *v); // добавляются внешние силы (в нашем случае - сила притяжения)
 
+    //TODO test
     void
-    advect(float *vx, float *vy, float *q); // перенос некоторой величины q через поле u. Решение уравнения Dq/Dt = 0
+    advect(float *vx, float *vy, float *q_copy, float *q); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
 
     void project();
 
@@ -73,27 +69,41 @@ public:
 
     void fillPressureMatrix();
 
+    //TODO test
     void PCG();
 
+    //TODO test
     void applyPreconditioner();
 
+    //TODO test
     void calcPreconditioner();
 
-    float getVelocityX(float i, float j);
+    //TODO test
+    float getVelocityX(int i, int j);
 
-    float getVelocityY(float i, float j);
+    //TODO test
+    float getVelocityY(int i, int j);
 
+    //TODO test
     void moveCells(SpaceType *old_s, SpaceType *new_s);
 
+    //TODO test
     int cutValue(float from, float to, float value);
 
-    void dotProduct(float *first, float *second, float *result);
+    float dotProduct(float *first, float *second);
 
-    void multPressMatrix();
-
-    void dotDiv(float *first, float *second, float *result);
-
+    //TODO test
     void updateVelocities();
+
+    //TODO test
+    void applyPressureMatrix();
+
+    // Все формулы записаны в стандартных кооридинатах, однако при индексации ось Y направлена вниз
+    int getIdx(int i, int j);
+
+    int getIdxX(int i, int j);
+
+    int getIdxY(int i, int j);
 };
 
 
