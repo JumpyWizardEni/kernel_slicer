@@ -45,22 +45,23 @@ float Solver::getVelocityY(int i, int j) {
 
 
 void Solver::performStep() {
-    double max;
-    double min;
+    resetParams();
     countTimeDelta(vx.data(), vy.data());
-    addForces(vy.data());
+    velocityExtra = vx;
+    velocityExtra2 = vx;
     printMaxMin(vy);
-//    velocityExtra = vx;
-//    velocityExtra2 = vx;
-//    advect(vx.data(), vy.data(), velocityExtra.data(), velocityExtra2.data());
-//    vx = velocityExtra2;
-//    velocityExtra = vy;
-//    velocityExtra2 = vy;
-//    advect(vx.data(), vy.data(), velocityExtra.data(), velocityExtra2.data());
-//    vy = velocityExtra2;
+    printMaxMin(vx);
+    advect(vx.data(), vy.data(), velocityExtra.data(), velocityExtra2.data());
+    vx = velocityExtra2;
+    velocityExtra = vy;
+    velocityExtra2 = vy;
+    advect(vx.data(), vy.data(), velocityExtra.data(), velocityExtra2.data());
+    vy = velocityExtra2;
     spaceTypesOld = spaceTypes;
     printMaxMin(vy);
+    addForces(vy.data());
     project();
+    checkDivergence();
     moveCells(spaceTypesOld.data(), spaceTypes.data());
 }
 
@@ -84,7 +85,9 @@ void Solver::countTimeDelta(const float *p_vx, const float *p_vy) {
 void Solver::addForces(float *v) {
     for (int i = 1; i < size - 1; ++i) {
         for (int j = 1; j < size; ++j) {
-            v[getIdxY(i, j)] += dt * g;
+            if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+                v[getIdxY(i, j)] += dt * g;
+            }
         }
     }
 }
@@ -141,11 +144,13 @@ void Solver::advect(float *vx, float *vy, float *q_copy, float *q) {
 //solve
 void Solver::project() {
     //calc rhs for Ap = rhs
-//    calcNegativeDivergence();
+    calcNegativeDivergence();
     //set A
     fillPressureMatrix();
     //solve Ap = rhs
     PCG();
+
+    dirichleCondition();
     //Compute new velocities
     updateVelocities();
 };
@@ -224,9 +229,9 @@ void Solver::calcPreconditioner() {
                           - std::pow(pressX[getIdx(i - 1, j)] * preconditioner[getIdx(i - 1, j)], 2)
                           - std::pow(pressY[getIdx(i, j - 1)] * preconditioner[getIdx(i, j - 1)], 2)
                           - tau * (pressX[getIdx(i - 1, j)] * pressY[getIdx(i - 1, j)] *
-                            std::pow(preconditioner[getIdx(i - 1, j)], 2)
-                          + pressY[getIdx(i, j - 1)] * pressX[getIdx(i, j - 1)] *
-                            std::pow(preconditioner[getIdx(i, j - 1)], 2));
+                                   std::pow(preconditioner[getIdx(i - 1, j)], 2)
+                                   + pressY[getIdx(i, j - 1)] * pressX[getIdx(i, j - 1)] *
+                                     std::pow(preconditioner[getIdx(i, j - 1)], 2));
                 if (e < safe * press_diag[getIdx(i, j)]) {
                     e = press_diag[getIdx(i, j)];
                 }
@@ -277,6 +282,7 @@ void Solver::PCG() {
                 endFlag = 0;
             }
         }
+//        printMaxMin(pressureResidual);
 
         //Вектор давлений найден
         if (endFlag) {
@@ -356,9 +362,15 @@ float Solver::dotProduct(float *first, float *second) {
     return sum;
 }
 
-bool Solver::isFluidVelocity(int i, int j) {
+bool Solver::isFluidVelocityX(int i, int j) {
     return spaceTypes[getIdx(i - 1, j)] == SpaceType::Fluid ||
            spaceTypes[getIdx(i, j)] == SpaceType::Fluid && !(spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid ||
+                                                             spaceTypes[getIdx(i, j)] == SpaceType::Solid);
+}
+
+bool Solver::isFluidVelocityY(int i, int j) {
+    return spaceTypes[getIdx(i, j - 1)] == SpaceType::Fluid ||
+           spaceTypes[getIdx(i, j)] == SpaceType::Fluid && !(spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid ||
                                                              spaceTypes[getIdx(i, j)] == SpaceType::Solid);
 }
 
@@ -432,4 +444,47 @@ void Solver::printMaxMin(vector<float> &v) {
     double max = *std::max_element(std::begin(v), std::end(v));
     double min = *std::min_element(std::begin(v), std::end(v));
     std::cout << max << " " << min << std::endl;
+}
+
+void Solver::resetParams() {
+    for (int i = 0; i < size * size; ++i) {
+        rhs[i] = 0;
+    }
+}
+
+void Solver::checkDivergence() {
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < size; ++j) {
+            double div =
+                    (vx[getIdxX(i + 1, j)] - vx[getIdxX(i, j)]) / dx +
+                    (vy[getIdxY(i, j + 1)] - vy[getIdxY(i, j)]) / dx;
+            std::cout << div <<", i: " << i << ", j: " << j << std::endl;
+        }
+    }
+}
+
+void Solver::dirichleCondition() {
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < size; ++j) {
+            if (spaceTypes[getIdx(i, j)] != SpaceType::Fluid) {
+                pressure[getIdx(i, j)] = 0;
+            }
+        }
+    }
+
+    for (int i = 0; i < size + 1; ++i) {
+        for (int j = 0; j < size; ++j) {
+            if (!isFluidVelocityX(i, j)) {
+                vx[getIdxX(i, j)] = 0;
+            }
+        }
+    }
+
+    for (int i = 0; i < size; ++i) {
+        for (int j = 0; j < size + 1; ++j) {
+            if (!isFluidVelocityY(i, j)) {
+                vy[getIdxY(i, j)] = 0;
+            }
+        }
+    }
 }

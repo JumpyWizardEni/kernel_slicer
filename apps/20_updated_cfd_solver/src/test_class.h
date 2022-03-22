@@ -9,6 +9,10 @@ enum class SpaceType {
     Fluid, Solid, Empty
 };
 
+class Velocity {
+
+};
+
 
 class Solver {
 
@@ -17,8 +21,8 @@ public:
     float dt = 0.1; // Меняется каждый шаг
     float dx = 0.125; // Размер сетки в условных единицах
     float density = 1000;
-    const float g = -9.82f; // Ускорение свободного падения
-    const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
+    const float g = 9.82f; // Ускорение свободного падения
+    const int PCG_MAX_ITERS = 10000; // Максимальное число итераций для PCG алгоритма
     const float TOL = 1e-5; // epsilon для давления
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
@@ -41,11 +45,6 @@ public:
 
     vector<float> vx; // (size + 1), size
     vector<float> vy; // size, (size + 1)
-
-    vector<float> extraVec;
-    vector<float> transferVec;
-
-
 
     Solver();
 
@@ -104,6 +103,20 @@ public:
     int getIdxX(int i, int j);
 
     int getIdxY(int i, int j);
+
+    int getNormalIdx(int i, int j);
+
+    void printMaxMin(vector<float> &vector);
+
+    bool isFluidVelocityX(int i, int j);
+
+    void resetParams();
+
+    void checkDivergence();
+
+    void dirichleCondition();
+
+    bool isFluidVelocityY(int i, int j);
 };
 
 
