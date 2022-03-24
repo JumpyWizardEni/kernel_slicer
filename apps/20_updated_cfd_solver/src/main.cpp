@@ -8,8 +8,8 @@
 using std::vector;
 
 const double GRID_SIZE = 1;
-const int GRID_NUM = 30;
-const int SIMULATION_STEPS = 10;
+const int GRID_NUM = 100;
+const int SIMULATION_STEPS = 100;
 
 
 

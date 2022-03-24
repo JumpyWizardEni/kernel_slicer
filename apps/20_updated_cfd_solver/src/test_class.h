@@ -59,7 +59,7 @@ public:
 
     //TODO test
     void
-    advect(float *vx, float *vy, float *q_copy, float *q); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
+    advect(float *vx, float *vy, float *q_copy, float *q, char mode); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
 
     void project();
 
@@ -84,7 +84,7 @@ public:
     float getVelocityY(int i, int j);
 
     //TODO test
-    void moveCells(SpaceType *old_s, SpaceType *new_s);
+    void moveCells(SpaceType *old_s, SpaceType *new_s, float *new_vx, float *new_vy);
 
     //TODO test
     int cutValue(float from, float to, float value);
@@ -117,6 +117,20 @@ public:
     void dirichleCondition();
 
     bool isFluidVelocityY(int i, int j);
+
+    void checkNonFluidVelocities();
+
+    void visualise();
+
+    void visualiseVx();
+
+    void visualiseSpaceTypes();
+
+    void visualiseVy();
+
+    void visualisePressure();
+
+    void fillWithZeros(float *v, int size);
 };
 
 
