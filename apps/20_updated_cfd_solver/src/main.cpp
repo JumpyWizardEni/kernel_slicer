@@ -54,9 +54,8 @@ void fillSolverData(Solver &solver) {
             if (j == 0 || i == 0 || j == GRID_NUM - 1 || i == GRID_NUM - 1) {
                 spaceTypes[GRID_NUM * i + j] = SpaceType::Solid; // На границе - стена
             } else {
-                double r = randfrom(0, 1);
                 //Остальные заполняем случайно
-                if (r < 0.3) {
+                if (i < round(GRID_NUM * 0.3)) {
                     spaceTypes[GRID_NUM * i + j] = SpaceType::Empty;
                 } else {
                     spaceTypes[GRID_NUM * i + j] = SpaceType::Fluid;
