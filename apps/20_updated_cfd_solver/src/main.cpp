@@ -8,9 +8,9 @@
 using std::vector;
 
 const double GRID_SIZE = 1;
-const int GRID_NUM = 100;
-const int SIMULATION_STEPS = 100;
-
+const double PX_PER_CELL = 5;
+const int GRID_NUM = 20;
+const int SIMULATION_STEPS = 500;
 
 
 double randfrom(double min, double max);
@@ -22,7 +22,7 @@ void simulate(Solver &solver, SimpleRenderer &renderer);
 int main() {
     Solver solver = Solver();
 
-    SimpleRenderer renderer = SimpleRenderer(GRID_SIZE, GRID_NUM);
+    SimpleRenderer renderer = SimpleRenderer(PX_PER_CELL, GRID_NUM);
 
     fillSolverData(solver);
 
@@ -32,12 +32,40 @@ int main() {
 }
 
 void simulate(Solver &solver, SimpleRenderer &renderer) {
-    renderer.saveImage("images/" + std::to_string(0) + ".jpeg", solver.spaceTypes);
-    for (int i = 0; i < SIMULATION_STEPS; ++ i) {
-        std::cout << "Current frame: " + std::to_string(i) <<  std::endl;
+    renderer.saveImage("images/" + std::to_string(0) + ".jpeg", solver.spaceTypes, solver.particles,
+                       RenderMode::Square);
+    for (int frameNum = 1; frameNum < SIMULATION_STEPS; ++frameNum) {
+        if (frameNum % 40 == 0) {
+            for (int i = 0; i < GRID_NUM; ++i) {
+                for (int j = 0; j < GRID_NUM; ++j) {
+                    if (!(j == 0 || i == 0 || j == GRID_NUM - 1 || i == GRID_NUM - 1)) {
+
+
+                        //Остальные заполняем случайно
+                        if (i > round(GRID_NUM * 0.2) && i < round(GRID_NUM * 0.4) && j > round(GRID_NUM * 0.2) &&
+                            j < round(GRID_NUM * 0.6)) {
+                            for (int k = 0; k < 4; ++k) {
+                                double r1 = randfrom(0.0, 1.0);
+                                double r2 = randfrom(0.0, 1.0);
+                                Particle p = Particle();
+                                p.pos_x = i * solver.dx + solver.dx * r1;
+                                p.pos_y = j * solver.dx + solver.dx * r2;
+                                solver.particles.push_back(p);
+                            }
+
+
+                            solver.particles_size += 4;
+                        }
+                    }
+                }
+            }
+        }
+        std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
         solver.performStep();
-        renderer.saveImage("images/" + std::to_string(i + 1) + ".jpeg", solver.spaceTypes);
+        renderer.saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver.spaceTypes, solver.particles,
+                           RenderMode::Square);
     }
+
 }
 
 //"Случайное" вещ. число в пределах от min до max
@@ -48,18 +76,27 @@ double randfrom(double min, double max) {
 }
 
 void fillSolverData(Solver &solver) {
-    vector<SpaceType> spaceTypes(GRID_NUM * GRID_NUM);
+    float dx = (float) GRID_SIZE / GRID_NUM;
+    vector<Particle> particles;
+    int particles_size = 0;
     for (int i = 0; i < GRID_NUM; ++i) {
         for (int j = 0; j < GRID_NUM; ++j) {
-            if (j == 0 || i == 0 || j == GRID_NUM - 1 || i == GRID_NUM - 1) {
-                spaceTypes[GRID_NUM * i + j] = SpaceType::Solid; // На границе - стена
-            } else {
-                double r = randfrom(0, 1);
+            if (!(j == 0 || i == 0 || j == GRID_NUM - 1 || i == GRID_NUM - 1 )) {
+
+
                 //Остальные заполняем случайно
-                if (r < 0.3) {
-                    spaceTypes[GRID_NUM * i + j] = SpaceType::Empty;
-                } else {
-                    spaceTypes[GRID_NUM * i + j] = SpaceType::Fluid;
+                if (j > round(GRID_NUM * 0.4)) {
+                    for (int k = 0; k < 4; ++k) {
+                        double r1 = randfrom(0.0, 1.0);
+                        double r2 = randfrom(0.0, 1.0);
+                        Particle p = Particle();
+                        p.pos_x = i * dx + dx * r1;
+                        p.pos_y = j * dx + dx * r2;
+                        particles.push_back(p);
+                    }
+
+
+                    particles_size += 4;
                 }
             }
         }
@@ -70,23 +107,23 @@ void fillSolverData(Solver &solver) {
         vx[i] = 0;
 
 
-
     vector<float> pressure(GRID_NUM * GRID_NUM);
     for (int i = 0; i < GRID_NUM * (GRID_NUM); ++i)
         pressure[i] = 0;
 
+
     solver.size = GRID_NUM;
+    solver.particles_size = particles_size;
     vector<float> vy((GRID_NUM + 1) * GRID_NUM);
     for (int i = 1; i < GRID_NUM - 1; ++i) {
-        for (int j =  1; j < GRID_NUM; j++) {
+        for (int j = 1; j < GRID_NUM; j++) {
             vy[solver.getIdxY(i, j)] = 0;
         }
     }
-    solver.dx = (float) GRID_SIZE / GRID_NUM;
+    solver.particles = particles;
+    solver.dx = dx;
     solver.vx = vx;
     solver.vy = vy;
-    solver.spaceTypes = spaceTypes;
-    solver.spaceTypesOld = spaceTypes;
     solver.pressure = pressure;
 
     solver.setParameters();

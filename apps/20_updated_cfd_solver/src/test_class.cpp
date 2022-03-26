@@ -1,9 +1,9 @@
 #include "test_class.h"
 #include <cmath>
 #include <vector>
-#include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <map>
 
 using std::vector;
 
@@ -11,6 +11,8 @@ Solver::Solver() = default;
 
 void Solver::setParameters() {
     pressure.resize(size * size, 0);
+    gridInfo.resize(size * size, GridPICInfo());
+    spaceTypes.resize(size * size, SpaceType::Empty);
     pressureResidual.resize(size * size, 0);
     rhs.resize(size * size, 0);
     press_diag.resize(size * size, 0);
@@ -20,9 +22,11 @@ void Solver::setParameters() {
     q.resize(size * size, 0);
     z.resize(size * size, 0);
     s.resize(size * size, 0);
-
-    velocityExtra.resize(size * (size + 1), 0);
-    velocityExtra2.resize(size * (size + 1), 0);
+    diff_vx.resize(size * size, 0);
+    diff_vy.resize(size * size, 0);
+    mask.resize(size * size, 0);
+    prev_vx.resize(size * (size + 1), 0);
+    prev_vy.resize(size * (size + 1), 0);
 }
 
 int Solver::cutValue(float from, float to, float value) {
@@ -35,38 +39,45 @@ int Solver::cutValue(float from, float to, float value) {
     return (int) std::round(value);
 }
 
-float Solver::getVelocityX(int i, int j) {
-    return (vx[getIdxX(i, j)] + vx[getIdxX(i + 1, j)]) / 2;
+float Solver::getVelocityX(float *vx, int i, int j) {
+    float res = (vx[getIdxX(i, j)] + vx[getIdxX(i + 1, j)]) / 2;
+
+    return res;
 }
 
-float Solver::getVelocityY(int i, int j) {
-    return (vy[getIdxY(i, j)] + vx[getIdxY(i, j + 1)]) / 2;
+float Solver::getVelocityY(float *vy, int i, int j) {
+    float res = (vy[getIdxY(i, j)] + vy[getIdxY(i, j + 1)]) / 2;
+
+    return res;
 
 }
 
+double Solver::randfrom1(double min, double max) {
+    double range = (max - min);
+    double div = RAND_MAX / range;
+    return min + (rand() / div);
+}
 
 void Solver::performStep() {
     resetParams();
-//    visualise();
+    assembleGridFromParticles();
     countTimeDelta(vx.data(), vy.data());
-    velocityExtra = vx;
-    velocityExtra2 = vx;
-    advect(vx.data(), vy.data(), velocityExtra.data(), velocityExtra2.data(), 'x');
-    vx = velocityExtra2;
-    velocityExtra = vy;
-    velocityExtra2 = vy;
-    advect(vx.data(), vy.data(), velocityExtra.data(), velocityExtra2.data(), 'y');
     dirichleCondition();
-
-    vy = velocityExtra2;
-    spaceTypesOld = spaceTypes;
-    addForces(vy.data());
+    prev_vx = vx;
+    prev_vy = vy;
+    addForces(vy.data(), g);
+//    extrapolateVelocities();
+//    float r = randfrom1(0, 1);
+//    if (r > 0.9) {
+//        addForces(vx.data(), g * 100);
+//    }
     project();
     checkDivergence();
+    dirichleCondition();
+    advectParticles();
+    changeParticlesNum();
+    checkDivergence();
 //    visualise();
-    moveCells(spaceTypesOld.data(), spaceTypes.data(), velocityExtra.data(), velocityExtra2.data());
-    vx = velocityExtra;
-    vy = velocityExtra2;
 }
 
 
@@ -86,31 +97,51 @@ void Solver::countTimeDelta(const float *p_vx, const float *p_vy) {
 }
 
 //Добавляем силу тяжести
-void Solver::addForces(float *v) {
-    for (int j = 1; j < size - 1; ++j) {
-        for (int i = 1; i < size; ++i) {
+void Solver::addForces(float *v, float a) {
+    for (int j = 1; j < size; ++j) {
+        for (int i = 1; i < size - 1; ++i) {
             if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
-                v[getIdxY(i, j)] += dt * g;
+                v[getIdxY(i, j)] += dt * a;
             }
         }
     }
 }
 
-void Solver::advect(float *vx, float *vy, float *q_copy, float *q, char c) {
-    for (int i = 0; i < size; ++i) {
-        for (int j = 0; j < size; ++j) {
-            //Semi-Lagrangian метод: ищем точку, в которой текущая величина была dt времени назад
-            double _vx = vx[getIdxX(i, j)];
-            double _vy = vy[getIdxY(i, j)];
-            int last_x = std::round(i - dt * _vx / dx);
-            int last_y = std::round(j - dt * _vy / dx);
-            if (c == 'x') {
-                q[getIdxX(i, j)] = q_copy[getIdxX(last_x, last_y)];
-            } else {
-                q[getIdxY(i, j)] = q_copy[getIdxY(last_x, last_y)];
-            }
-        }
-    }
+float Solver::interpolate(float q, float *q_copy, float x, float y, int i, int j) {
+    float w_x = (ceil(x) - x) * dx;
+    float w_y = (ceil(y) - y) * dx;
+
+    //Кубическая интерполяция
+
+    //По x
+    float w_x_2 = w_x * w_x;
+    float w_x_3 = w_x * w_x_2;
+    float w0 = -w_x / 3 + w_x_2 / 3 - w_x_3 / 6;
+    float w1 = 1 - w_x_2 + (w_x_3 - w_x) / 2;
+    float w2 = w_x + (w_x_2 - w_x_3) / 2;
+    float w3 = (w_x_3 - w_x) / 6;
+
+    float q_j_1 = w0 * q_copy[getIdx(i - 1, j - 1)] + w1 * q_copy[getIdx(i, j - 1)] +
+                  w2 * q_copy[getIdx(i + 1, j - 1)] + w3 * q_copy[getIdx(i + 2, j - 1)];
+
+    float q_j = w0 * q_copy[getIdx(i - 1, j)] + w1 * q_copy[getIdx(i, j)] +
+                w2 * q_copy[getIdx(i + 1, j)] + w3 * q_copy[getIdx(i + 2, j)];
+
+    float q_j1 = w0 * q_copy[getIdx(i - 1, j + 1)] + w1 * q_copy[getIdx(i, j + 1)] +
+                 w2 * q_copy[getIdx(i + 1, j + 1)] + w3 * q_copy[getIdx(i + 2, j + 1)];
+
+    float q_j2 = w0 * q_copy[getIdx(i - 1, j + 2)] + w1 * q_copy[getIdx(i, j + 2)] +
+                 w2 * q_copy[getIdx(i + 1, j + 2)] + w3 * q_copy[getIdx(i + 2, j + 2)];
+
+    //По y
+    float w_y_2 = w_y * w_y;
+    float w_y_3 = w_y * w_y_2;
+    w0 = -w_y / 3 + w_y_2 / 3 - w_y_3 / 6;
+    w1 = 1 - w_y_2 + (w_y_3 - w_y) / 2;
+    w2 = w_y + (w_y_2 - w_y_3) / 2;
+    w3 = (w_y_3 - w_y) / 6;
+    q = w0 * q_j_1 + w1 * q_j + w2 * q_j1 + w3 * q_j2;
+    return q;
 }
 
 
@@ -123,7 +154,7 @@ void Solver::project() {
     //solve Ap = rhs
     PCG();
 
-    dirichleCondition();
+//    dirichleCondition();
     //Compute new velocities
     updateVelocities();
 
@@ -132,8 +163,8 @@ void Solver::project() {
 void Solver::calcNegativeDivergence() {
 
     float scale = 1 / dx;
-    for (int j = 1; j < size - 1; ++j) {
-        for (int i = 1; i < size - 1; ++i) {
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
             if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
                 rhs[getIdx(i, j)] =
                         -scale *
@@ -309,7 +340,6 @@ void Solver::applyPreconditioner() {
 
 
 void Solver::applyPressureMatrix() {
-    float scale = dt / (density * dx * dx);
     for (int j = 1; j < size - 1; ++j) {
         for (int i = 1; i < size - 1; ++i) {
             if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
@@ -381,28 +411,6 @@ void Solver::fillWithZeros(float *v, int size) {
     }
 }
 
-//TODO по хорошему интерполировать и делить на 2-3-... частей
-void Solver::moveCells(SpaceType *old_s, SpaceType *new_s, float *new_vx, float *new_vy) {
-    fillWithZeros(new_vx, size * (size + 1));
-    fillWithZeros(new_vy, size * (size + 1));
-    for (int i = 0; i < size * size; ++i) {
-        if (new_s[i] == SpaceType::Fluid) {
-            new_s[i] = SpaceType::Empty;
-        }
-    }
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            if (old_s[getIdx(i, j)] == SpaceType::Fluid) {
-                double _vx = getVelocityX(i, j);
-                double _vy = getVelocityY(i, j);
-                int new_i = cutValue(1, size - 2, i + dt * _vx / dx);
-                int new_j = cutValue(1, size - 2, j + dt * _vy / dx);
-                new_s[getIdx(new_i, new_j)] = SpaceType::Fluid;
-            }
-        }
-    }
-}
-
 int Solver::getIdx(int i, int j) {
 //    return i + size * (size - j - 1);
     return i + size * j;
@@ -416,16 +424,6 @@ int Solver::getIdxY(int i, int j) {
 int Solver::getIdxX(int i, int j) {
 //    return i + (size + 1) * (size - j - 1);
     return i + (size + 1) * j;
-}
-
-int Solver::getNormalIdx(int i, int j) {
-    return i + size * j;
-}
-
-void Solver::printMaxMin(vector<float> &v) {
-    double max = *std::max_element(std::begin(v), std::end(v));
-    double min = *std::min_element(std::begin(v), std::end(v));
-    std::cout << max << " " << min << std::endl;
 }
 
 void Solver::resetParams() {
@@ -462,7 +460,8 @@ void Solver::checkNonFluidVelocities() {
     for (int j = 0; j < size; ++j) {
         for (int i = 0; i < size; ++i) {
             if (spaceTypes[getIdx(i, j)] != SpaceType::Fluid) {
-                std::cout << "vx: " << getVelocityX(i, j) << "vy: " << getVelocityY(i, j) << std::endl;
+                std::cout << "vx: " << getVelocityX(vx.data(), i, j) << "vy: " << getVelocityY(vy.data(), i, j)
+                          << std::endl;
             }
         }
     }
@@ -517,51 +516,353 @@ void Solver::dirichleCondition() {
     }
 }
 
-void Solver::visualiseVx() {
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size + 1; ++i) {
-            std::cout << vx[getIdxX(i, j)] << " ";
-            if (i == size) {
-                std::cout << std::endl;
-            }
-        }
-    }
+void Solver::assembleGridFromParticles() {
+    createSpaceTypes();
+    getVelocitiesFromParticles();
 }
 
-void Solver::visualiseSpaceTypes() {
+void Solver::clearGrid() {
     for (int j = 0; j < size; ++j) {
         for (int i = 0; i < size; ++i) {
-            char c = 'F';
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Solid) {
-                c = 'S';
-            } else if (spaceTypes[getIdx(i, j)] == SpaceType::Empty) {
-                c = 'E';
-            }
-            std::cout << c << " ";
-            if (i == size - 1) {
-                std::cout << std::endl;
-            }
+            spaceTypes[getIdx(i, j)] = SpaceType::Empty;
         }
     }
 }
 
-void Solver::visualiseVy() {
+void Solver::createSpaceTypes() {
+    clearGrid();
+    for (int i = 0; i < particles_size; ++i) {
+        int x = cutValue(0, size - 1, particles[i].pos_x / dx);
+        int y = cutValue(0, size - 1, particles[i].pos_y / dx);
+        spaceTypes[getIdx(x, y)] = SpaceType::Fluid;
+    }
 
-}
-
-void Solver::visualisePressure() {
     for (int j = 0; j < size; ++j) {
         for (int i = 0; i < size; ++i) {
-            char c = 'F';
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Solid) {
-                c = 'S';
-            } else if (spaceTypes[getIdx(i, j)] == SpaceType::Empty) {
-                c = 'E';
-            }
-            std::cout << pressure[getIdx(i, j)] << "-" << c << " ";
-            if (i == size - 1) {
-                std::cout << std::endl;
+            if (i == 0 || i == size - 1 || j == 0 || j == size - 1) {
+                spaceTypes[getIdx(i, j)] = SpaceType::Solid;
             }
         }
     }
 }
+
+float Solver::h2(float x) {
+
+    if (x >= -1.5 && x < -0.5) {
+        return 0.5 * pow(x + 1.5, 2);
+    }
+    if (x >= -0.5 && x < 0.5) {
+        return 0.75 - x * x;
+    }
+    if (x >= 0.5 && x < 1.5) {
+        return 0.5 * pow(1.5 - x, 2);
+    }
+    return 0;
+};
+
+//kernel function for interpolating particle values
+float Solver::kernelFunc(float x, float y) {
+    return h2(x / dx) * h2(y / dx);
+}
+
+void Solver::getVelocitiesFromParticles() {
+    fillWithZeros(vx.data(), size * (size + 1));
+    fillWithZeros(vy.data(), size * (size + 1));
+
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+            GridPICInfo &info = gridInfo[getIdx(i, j)];
+            info.sum_vx = 0;
+            info.sum_vy = 0;
+            info.weight_vx = 0;
+            info.weight_vy = 0;
+        }
+    }
+
+    for (int i = 0; i < particles_size; ++i) {
+        Particle &particle = particles[i];
+
+        int x = cutValue(1, size - 2, particle.pos_x / dx);
+        int y = cutValue(1, size - 2, particle.pos_y / dx);
+        GridPICInfo &info = gridInfo[getIdx(x, y)];
+        float vx_k = kernelFunc(particle.pos_x - (x - 0.5) * dx, particle.pos_y - y * dx);
+        float vy_k = kernelFunc(particle.pos_x - x * dx, particle.pos_y - (y - 0.5) * dx);
+        info.sum_vx += particle.vx * vx_k;
+        info.sum_vy += particle.vy * vy_k;
+        info.weight_vx += vx_k;
+        info.weight_vy += vy_k;
+    }
+
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+            GridPICInfo &info = gridInfo[getIdx(i, j)];
+            if (info.sum_vx > 0.0001) {
+                vx[getIdxX(i, j)] = info.sum_vx / info.weight_vx;
+            }
+            if (info.sum_vy > 0.0001) {
+                vy[getIdxY(i, j)] = info.sum_vy / info.weight_vy;
+            }
+
+        }
+    }
+}
+
+void Solver::countDiffXY() {
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+            diff_vx[getIdx(i, j)] = getVelocityX(vx.data(), i, j) - getVelocityX(prev_vx.data(), i, j);
+            diff_vy[getIdx(i, j)] = getVelocityY(vy.data(), i, j) - getVelocityY(prev_vy.data(), i, j);
+        }
+    }
+}
+
+
+void Solver::advectParticles() {
+    countDiffXY();
+    for (int i = 0; i < particles_size; ++i) {
+        Particle &particle = particles[i];
+        int x = cutValue(1, size - 2, particle.pos_x / dx);
+        int y = cutValue(1, size - 2, particle.pos_y / dx);
+        float vx_interpolated = interpolate(diff_vx[getIdx(x, y)], diff_vx.data(), particle.pos_x / dx,
+                                            particle.pos_y / dx, x, y);
+        particle.vx += vx_interpolated;
+        particle.vy += interpolate(diff_vy[getIdx(x, y)], diff_vy.data(), particle.pos_x / dx, particle.pos_y / dx, x,
+                                   y);
+
+        particle.pos_x += particle.vx * dt;
+        particle.pos_y += particle.vy * dt;
+//        float substepTaw = 0;
+//        bool finished = false;
+//        float _vx = getVelocityX(vx.data(), x, y);
+//        float _vy = getVelocityY(vy.data(), x, y);
+//        float newX = x;
+//        float newY = y;
+//        while(!finished) {
+//            float dTaw = dx / (sqrt(_vx*_vx + _vy*_vy) + 1e-20);
+//            if (substepTaw + dTaw > dt) {
+//                dTaw = dt - substepTaw;
+//                finished = true;
+//            } else if (substepTaw + 2 * dTaw >= dt) {
+//                dTaw = 0.5 * (dt - substepTaw);
+//            }
+//            float k1_x = getVelocityX(vx.data(), round(newX), round(newY));
+//            float k1_y = getVelocityY(vy.data(), round(newX), round(newY));
+//
+//            float k2_x = getVelocityX(vx.data(), cutValue(1, size - 2, newX + 0.5 * substepTaw * k1_x),
+//                                      cutValue(1, size - 2, newY + 0.5 * substepTaw * k1_y));
+//            float k2_y = getVelocityY(vy.data(), cutValue(1, size - 2, newX + 0.5 * substepTaw * k1_x),
+//                                      cutValue(1, size - 2, newY + 0.5 * substepTaw * k1_y));
+//
+//            float k3_x = getVelocityX(vx.data(), cutValue(1, size - 2, newX + 0.75 * substepTaw * k2_x),
+//                                      cutValue(1, size - 2, newY + 0.75 * substepTaw * k2_y));
+//
+//            float k3_y = getVelocityY(vy.data(), cutValue(1, size - 2, newX + 0.75 * substepTaw * k2_x),
+//                                      cutValue(1, size - 2, newY + 0.75 * substepTaw * k2_y));
+//            _vx = (2.0 / 9 * k1_x + 0.3333 * k2_x + 4.0/9 * k3_x);
+//            _vy = (2.0 / 9 * k1_y + 0.3333 * k2_y + 4.0/9 * k3_y);
+//            newX += _vx * substepTaw;
+//            newY +=  _vy * substepTaw;
+//            substepTaw = substepTaw + dTaw;
+//        }
+
+//
+//        particle.vx = _vx;
+//        particle.vy = _vy;
+//        particle.pos_x = newX;
+//        particle.pos_y = newY;
+
+
+        float velocityCoef = 1;
+        float dxCoef = 1;
+        while (particle.pos_x < -2) {
+            particle.pos_x += 1;
+        }
+        while (particle.pos_x > 2) {
+            particle.pos_x -= 1;
+        }
+        while (particle.pos_y < -2) {
+            particle.pos_y += 1;
+        }
+        while (particle.pos_y > 2) {
+            particle.pos_y -= 1;
+        }
+        if (particle.vx > 0) {
+            if (particle.pos_x > 1) {
+                particle.pos_x = 2 - particle.pos_x - 2 * dxCoef * dx;
+                particle.vx = -particle.vx * velocityCoef;
+            } else if (particle.pos_x > 1 - dx) {
+                particle.pos_x = particle.pos_x - dx;
+                particle.vx = -particle.vx * velocityCoef;
+            } else if (particle.pos_x < dxCoef * dx) {
+                particle.pos_x = dxCoef * dx + particle.pos_x;
+                particle.vx = -particle.vx * velocityCoef;
+            }
+        } else {
+            if (particle.pos_x < 0) {
+                particle.pos_x = -particle.pos_x + dxCoef * dx;
+                particle.vx = -particle.vx * velocityCoef;
+            }
+        }
+        if (particle.vy > 0) {
+            if (particle.pos_y > 1) {
+                particle.pos_y = 2 - particle.pos_y - 2 * dxCoef * dx;
+                particle.vy = -particle.vy * velocityCoef;
+            } else if (particle.pos_y > 1 - dx) {
+                particle.pos_y = particle.pos_y - dx;
+                particle.vy = -particle.vy * velocityCoef;
+            } else if (particle.pos_y < dxCoef * dx) {
+                particle.pos_y = dxCoef * dx + particle.pos_y;
+                particle.vy = -particle.vy * velocityCoef;
+            }
+        } else {
+            if (particle.pos_y < dxCoef * dx) {
+                particle.pos_y = dxCoef * dx - particle.pos_y;
+                particle.vy = -particle.vy * velocityCoef;
+            }
+        }
+    }
+}
+
+//Удаляем, если в ячейке > 8 частиц. Добавляем, если в ячейке <4 частиц
+void Solver::changeParticlesNum() {
+    std::map<int, std::vector<int>> counts = std::map<int, std::vector<int>>();
+    for (int i = 0; i < particles_size; ++i) {
+        int x = cutValue(1, size - 2, particles[i].pos_x * size);
+        int y = cutValue(1, size - 2, particles[i].pos_y * size);
+        int ind = getIdx(x, y);
+        if (counts.count(ind)) {
+            counts[ind].push_back(i);
+        } else {
+            counts[ind] = {i};
+        }
+    }
+    for (auto &count: counts) {
+        int c = count.second.size();
+        if (c > 12) {
+            for (int i = c - 1; i >= 12; --i) {
+                particles.erase(particles.begin() + count.second[i]);
+                particles_size--;
+            }
+        }
+
+        if (c < 4) {
+            for (int i = c; i < 4; ++i) {
+                particles.push_back(getMeanParticle(count.second));
+                particles_size++;
+            }
+        }
+    }
+}
+
+Particle Solver::getMeanParticle(vector<int> &particlesIndices) {
+    float pos_x = 0;
+    float pos_y = 0;
+    float vx = 0;
+    float vy = 0;
+    float s = particles.size();
+    for (auto i: particlesIndices) {
+        Particle &p = particles[i];
+        pos_x += p.pos_x;
+        pos_y += p.pos_y;
+        vx += p.vx;
+        vy += p.vy;
+    }
+    pos_x /= s;
+    pos_y /= s;
+    vx /= s;
+    vy /= s;
+    return Particle(vx, vy, pos_x, pos_y);
+}
+
+void Solver::extrapolateVelocities() {
+    // Маркируем известные значения
+    wavefront.clear();
+    fillWithZeros(reinterpret_cast<float *>(mask.data()), size * size);
+    for (int j = 1; j < size; ++j) {
+        for (int i = 1; i < size; ++i) {
+            if (spaceTypes[getIdx(i - 1, j)] != SpaceType::Fluid && spaceTypes[getIdx(i, j)] != SpaceType::Fluid) {
+                mask[i] = INT32_MAX;
+            }
+        }
+    }
+
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+            if (mask[getIdx(i, j)] != 0 &&
+                (mask[getIdx(i - 1, j)] == 0 || mask[getIdx(i + 1, j)] == 0)) {
+                mask[getIdx(i, j)] = 1;
+                wavefront.push_back(getIdx(i, j));
+            }
+        }
+    }
+    int t = 0;
+    while (t < wavefront.size()) {
+        int ind = wavefront[t];
+        int i = ind % size;
+        int j = ind / size;
+        float vx_sum = 0;
+        int c = 0;
+        for (int i1 = i - 1; i1 <= i + 1; i1 += 2) {
+            if (i1 >= 0) {
+                if (mask[getIdx(i1, j)] < mask[getIdx(i, j)]) {
+                    c++;
+                    vx_sum += vx[getIdxX(i1, j)];
+                } else if (mask[getIdx(i1, j)] == INT32_MAX) {
+                    mask[getIdx(i1, j)] = mask[getIdx(i, j)] + 1;
+                    wavefront.push_back(getIdx(i1, j));
+                }
+            }
+        }
+        if (c > 0) {
+            vx_sum /= c;
+        }
+        vx[getIdxX(i, j)] = vx_sum;
+        t = t + 1;
+    }
+
+    wavefront.clear();
+    fillWithZeros(reinterpret_cast<float *>(mask.data()), size * size);
+    for (int j = 1; j < size; ++j) {
+        for (int i = 1; i < size; ++i) {
+            if (spaceTypes[getIdx(i, j - 1)] != SpaceType::Fluid && spaceTypes[getIdx(i, j)] != SpaceType::Fluid) {
+                mask[i] = INT32_MAX;
+            }
+        }
+    }
+
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+            if (mask[getIdx(i, j)] != 0 &&
+                (mask[getIdx(i, j - 1)] == 0 || mask[getIdx(i, j + 1)] == 0)) {
+                mask[getIdx(i, j)] = 1;
+                wavefront.push_back(getIdx(i, j));
+            }
+        }
+    }
+    t = 0;
+    while (t < wavefront.size()) {
+        int ind = wavefront[t];
+        int i = ind % size;
+        int j = ind / size;
+        float vy_sum = 0;
+        int c = 0;
+        for (int j1 = j - 1; j1 <= j + 1; j1 += 2) {
+            if (j1 >= 0) {
+                if (mask[getIdx(i, j1)] < mask[getIdx(i, j)]) {
+                    c++;
+                    vy_sum += vy[getIdxY(i, j1)];
+                } else if (mask[getIdx(i, j1)] == INT32_MAX) {
+                    mask[getIdx(i, j1)] = mask[getIdx(i, j)] + 1;
+                    wavefront.push_back(getIdx(i, j1));
+                }
+            }
+        }
+        if (c > 0) {
+            vy_sum /= c;
+        }
+        vy[getIdxY(i, j)] = vy_sum;
+        t = t + 1;
+    }
+
+}
+

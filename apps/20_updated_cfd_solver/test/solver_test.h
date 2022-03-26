@@ -95,12 +95,12 @@ public:
                 1.09, 0.09,
                 -1.91, -2.91};
 
-        solver.addForces(solver.vy.data());
+        solver.addForces(solver.vy.data(), solver.g);
 
         TS_ASSERT_VECTOR_EQUALS(solver.vy, gt)
     }
 
-    //TODO advect test
+    //TODO interpolate test
 
     void testCalcNegativeDivergence() {
         Solver solver = Solver();
