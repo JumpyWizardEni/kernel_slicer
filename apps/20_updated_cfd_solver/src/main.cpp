@@ -8,18 +8,18 @@ void circleWater(Configuration &configuration, int grid_num, int radius);
 
 int horizontalLine(Configuration &conf) {
     std::vector<std::pair<int, int>> waterIndices = {};
-    int grid_num = 50;
+    int grid_num = 100;
     for (int i = 1; i < grid_num - 1; ++i) {
         for (int j = 1; j < grid_num - 1; ++j) {
-            if (j > round(grid_num * 0.6)) {
+            if ((i < round(grid_num * 0.2) || i > round(grid_num * 0.8)) && j >= round(grid_num * 0.4)) {
                 waterIndices.emplace_back(i, j);
             }
         }
     }
 
 
-    conf.setGridSize(1).setParticlesPerGrid(6).setGridNum(grid_num)
-            .setPxPerCell(5).setSimulationSteps(1000)
+    conf.setGridSize(50).setParticlesPerGrid(5).setGridNum(grid_num)
+            .setPxPerCell(3).setSimulationSteps(1000)
             .setWaterIndices(waterIndices);
 
 }
@@ -35,7 +35,7 @@ void basketSolid(Configuration &conf, int grid_num = 30) {
     }
 
 
-    conf.setGridSize(1).setParticlesPerGrid(4).setGridNum(grid_num)
+    conf.setGridSize(grid_num).setParticlesPerGrid(4).setGridNum(grid_num)
             .setPxPerCell(5).setSimulationSteps(1000)
             .setWaterIndices(waterIndices);
 }
@@ -65,7 +65,7 @@ void solidWithAddingWater(Configuration &conf, int grid_num, int frequency, int 
         }
     }
 
-    conf.setGridSize(1).setParticlesPerGrid(2).setGridNum(grid_num)
+    conf.setGridSize(1).setParticlesPerGrid(3).setGridNum(grid_num)
             .setPxPerCell(px_size).setSimulationSteps(1000)
             .setWaterIndices(waterIndices).setAdditionalWater(additionalWater, frequency, first);
 }
@@ -74,13 +74,13 @@ int main() {
     Configuration conf = Configuration();
 
 
-//    horizontalLine(conf);
-//
+    horizontalLine(conf);
+
 //    basketSolid(conf);
 //
-//    solidWithAddingWater(conf, 100);
+//    solidWithAddingWater(conf, 100, 50, 10, 3);
 //
-    circleWater(conf, 100, 25);
+//    circleWater(conf, 100, 25);
 
 
     conf.start();
@@ -90,8 +90,8 @@ int main() {
 void circleWater(Configuration &conf, int grid_num, int radius) {
     std::vector<std::pair<int, int>> waterIndices = {};
 
-    int center_x = grid_num / 2;
-    int center_y = grid_num / 2;
+    int center_x = grid_num / 1.5;
+    int center_y = grid_num / 1.5;
     for (int i = 1; i < grid_num - 1; ++i) {
         for (int j = 1; j < grid_num - 1; ++j) {
             if (pow(i - center_x, 2) + pow(j - center_y, 2) <= pow(radius, 2) && j <= center_y) {

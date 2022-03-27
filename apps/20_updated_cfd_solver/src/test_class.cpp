@@ -40,7 +40,7 @@ int Solver::cutValue(double from, double to, double value) {
 }
 
 
-int Solver::floorValue(int from, int to, double value) {
+int Solver::roundValue(int from, int to, double value) {
     if (value > to) {
         value = to;
     }
@@ -48,7 +48,7 @@ int Solver::floorValue(int from, int to, double value) {
         value = from;
     }
 
-    return (int) std::floor(value);
+    return (int) std::round(value);
 }
 
 double Solver::getVelocityX(double *vx, int i, int j) {
@@ -73,20 +73,20 @@ double Solver::randfrom1(double min, double max) {
 void Solver::performStep() {
     resetParams();
     assembleGridFromParticles();
-//    countTimeDelta(vx.data(), vy.data());
+    countTimeDelta(vx.data(), vy.data());
     prev_vx = vx;
     prev_vy = vy;
     addForces(vy.data(), g);
     dirichleCondition();
-    extrapolateVelocities();
+//    extrapolateVelocities();
     project();
     dirichleCondition();
     advectParticles();
-//    checkDivergence();
+    checkDivergence();
     createSpaceTypes();
 //    int c = 0;
 //    for (auto &p: particles) {
-//        if (floorValue(1, size - 2, p.pos_x / dx) == 1 && floorValue(1, size - 2, p.pos_y / dx) == size - 2) {
+//        if (floorValue(1, size - 2, p.pos_x / dx) == 1 && roundValue(1, size - 2, p.pos_y / dx) == size - 2) {
 //            c++;
 //        }
 //    }
@@ -106,7 +106,7 @@ void Solver::countTimeDelta(const double *p_vx, const double *p_vy) {
     }
     maximum = std::sqrt(maximum);
     maximum += std::sqrt(5 * dx * std::abs(g)); // чтобы не было деления на 0
-    dt = dx / maximum;
+    dt = 3 * dx / maximum;
 }
 
 //Добавляем силу тяжести
@@ -549,8 +549,8 @@ void Solver::clearGrid() {
 void Solver::createSpaceTypes() {
     clearGrid();
     for (int i = 0; i < particles_size; ++i) {
-        int x = floorValue(0, size - 1, particles[i].pos_x / dx);
-        int y = floorValue(0, size - 1, particles[i].pos_y / dx);
+        int x = roundValue(0, size - 1, particles[i].pos_x / dx);
+        int y = roundValue(0, size - 1, particles[i].pos_y / dx);
         spaceTypes[getIdx(x, y)] = SpaceType::Fluid;
     }
 
@@ -603,8 +603,8 @@ void Solver::getVelocitiesFromParticles() {
     for (int i = 0; i < particles_size; ++i) {
         Particle &particle = particles[i];
 
-        int x = floorValue(1, size - 2, particle.pos_x / dx);
-        int y = floorValue(1, size - 2, particle.pos_y / dx);
+        int x = roundValue(1, size - 2, particle.pos_x / dx);
+        int y = roundValue(1, size - 2, particle.pos_y / dx);
         GridPICInfo &info = gridInfo[getIdx(x, y)];
         double vx_k = kernelFunc(particle.pos_x - (x - 0.5) * dx, particle.pos_y - y * dx);
         double vy_k = kernelFunc(particle.pos_x - x * dx, particle.pos_y - (y - 0.5) * dx);
@@ -642,8 +642,8 @@ void Solver::advectParticles() {
     countDiffXY();
     for (int i = 0; i < particles_size; ++i) {
         Particle &particle = particles[i];
-        int x = floorValue(1, size - 2, particle.pos_x / dx);
-        int y = floorValue(1, size - 2, particle.pos_y / dx);
+        int x = roundValue(1, size - 2, particle.pos_x / dx);
+        int y = roundValue(1, size - 2, particle.pos_y / dx);
 
         double vx_interpolated = interpolate(diff_vx[getIdx(x, y)], diff_vx.data(), particle.pos_x / dx,
                                              particle.pos_y / dx, x, y);
@@ -656,14 +656,14 @@ void Solver::advectParticles() {
         particle.pos_y += particle.vy * dt;
 
 
-        double velocityCoef = 1;
+        double velocityCoef = 0.9;
         double dxCoef = 1;
 
         if (particle.vx > 0) {
-            if (particle.pos_x > 1) {
-                particle.pos_x = 2 - particle.pos_x - 2 * dxCoef * dx;
+            if (particle.pos_x > dx * size) {
+                particle.pos_x = 2 * dx * size - particle.pos_x - 2 * dxCoef * dx;
                 particle.vx = -particle.vx * velocityCoef;
-            } else if (particle.pos_x > 1 - dx) {
+            } else if (particle.pos_x > dx * size - dx) {
                 particle.pos_x = particle.pos_x - dx;
                 particle.vx = -particle.vx * velocityCoef;
             } else if (particle.pos_x < dxCoef * dx) {
@@ -677,10 +677,10 @@ void Solver::advectParticles() {
             }
         }
         if (particle.vy > 0) {
-            if (particle.pos_y > 1) {
-                particle.pos_y = 2 - particle.pos_y - 2 * dxCoef * dx;
+            if (particle.pos_y > dx * size) {
+                particle.pos_y = 2 * dx * size - particle.pos_y - 2 * dxCoef * dx;
                 particle.vy = -particle.vy * velocityCoef;
-            } else if (particle.pos_y > 1 - dx) {
+            } else if (particle.pos_y > dx * size - dx) {
                 particle.pos_y = particle.pos_y - dx;
                 particle.vy = -particle.vy * velocityCoef;
             } else if (particle.pos_y < dxCoef * dx) {
@@ -693,20 +693,21 @@ void Solver::advectParticles() {
                 particle.vy = -particle.vy * velocityCoef;
             }
         }
-        y = floorValue(1, size - 2, particle.pos_y / dx);
-        if (y == 1 && std::abs(particle.vy) <= 1e-5 && spaceTypes[getIdx(x, y + 1)] == SpaceType::Empty) {
-            particle.pos_y += dx;
+        x = roundValue(1, size - 2, particle.pos_x / dx);
+        y = roundValue(1, size - 2, particle.pos_y / dx);
+        if (y <= 1 && std::abs(particle.vy) <= 1 && spaceTypes[getIdx(x, 2)] == SpaceType::Empty) {
+            particle.pos_y = 5 * dx;
             particle.vy = g * dt * 5;
         }
     }
 }
 
 //Удаляем, если в ячейке > 8 частиц. Добавляем, если в ячейке <4 частиц
-void Solver::changeParticlesNum() {
+void Solver::deleteUnnecessaryParticles() {
     std::map<int, std::vector<int>> counts = std::map<int, std::vector<int>>();
     for (int i = 0; i < particles_size; ++i) {
-        int x = floorValue(1, size - 2, particles[i].pos_x * size);
-        int y = floorValue(1, size - 2, particles[i].pos_y * size);
+        int x = roundValue(1, size - 2, particles[i].pos_x /dx);
+        int y = roundValue(1, size - 2, particles[i].pos_y / dx);
         int ind = getIdx(x, y);
         if (counts.count(ind)) {
             counts[ind].push_back(i);
@@ -716,16 +717,32 @@ void Solver::changeParticlesNum() {
     }
     for (auto &count: counts) {
         int c = count.second.size();
-        if (c > 20) {
+        if (c > 15) {
             std::sort(count.second.begin(), count.second.end());
-            for (int i = c - 1; i >= 20; --i) {
+            for (int i = c - 1; i >= 15; --i) {
                 particles.erase(particles.begin() + count.second[i]);
                 particles_size--;
             }
         }
+    }
+}
 
-        if (c < 4) {
-            for (int i = c; i < 4; ++i) {
+void Solver::changeParticlesNum() {
+    std::map<int, std::vector<int>> counts = std::map<int, std::vector<int>>();
+    for (int i = 0; i < particles_size; ++i) {
+        int x = roundValue(1, size - 2, particles[i].pos_x / dx);
+        int y = roundValue(1, size - 2, particles[i].pos_y / dx);
+        int ind = getIdx(x, y);
+        if (counts.count(ind)) {
+            counts[ind].push_back(i);
+        } else {
+            counts[ind] = {i};
+        }
+    }
+    for (auto &count: counts) {
+        int c = count.second.size();
+        if (c <= 2) {
+            for (int i = c; i < 3; ++i) {
                 particles.push_back(getMeanParticle(count.second));
                 particles_size++;
             }

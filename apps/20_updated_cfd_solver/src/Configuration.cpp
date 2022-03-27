@@ -19,6 +19,7 @@ void Configuration::start() {
 
 void Configuration::fillSolverData() {
     double dx = (double) grid_size / grid_num;
+    renderer->dx = dx;
     vector<Particle> particles;
     int particles_size = 0;
     for (int i = 0; i < water_indices.size(); ++i) {
@@ -58,7 +59,6 @@ void Configuration::simulate() {
                         RenderMode::Blobbies);
     for (int frameNum = 1; frameNum < simulation_steps; ++frameNum) {
 //        if (frameNum % 20 == 0) {
-//            solver->changeParticlesNum();
 //        }
         if (additional_fluid) {
 
@@ -78,14 +78,18 @@ void Configuration::simulate() {
             }
         }
         std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
-//        float t = 0;
-//        float t_frame = 1.0/30;
-//        while (t < t_frame) {
+        float t = 0;
+        float t_frame = 1.0 / 60;
+        while (t < t_frame) {
             solver->performStep();
-//            t += solver->dt;
-//        }
+            t += solver->dt;
+        }
+        solver->changeParticlesNum();
+        if (frameNum % 20 == 0) {
+            solver->deleteUnnecessaryParticles();
+        }
         renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver->spaceTypes, solver->particles,
-                           RenderMode::Blobbies);
+                            RenderMode::Blobbies);
     }
 
 }
@@ -135,4 +139,5 @@ Configuration &Configuration::setAdditionalWater(vector<std::pair<int, int>> &in
     this->first = first;
     additional_fluid_indices = std::move(indices);
     this->frequency = frequency;
-    return *this;}
+    return *this;
+}

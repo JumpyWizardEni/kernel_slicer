@@ -178,8 +178,9 @@ public:
 
     void extrapolateVelocities();
 
-    int floorValue(int i, int i1, double d);
+    int roundValue(int i, int i1, double d);
 
+    void deleteUnnecessaryParticles();
 };
 
 
