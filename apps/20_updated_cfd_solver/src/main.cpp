@@ -1,131 +1,115 @@
-#include "test_class.h"
-#include <string>
-#include <vector>
-#include <iostream>
 #include <cmath>
-#include "SimpleRenderer.h"
+#include "Configuration.h"
 
-using std::vector;
+void solidWithAddingWater(Configuration &configuration, int grid_num = 100, int frequency = 50, int first = 1,
+                          int px_size = 2);
 
-const double GRID_SIZE = 1;
-const double PX_PER_CELL = 5;
-const int GRID_NUM = 20;
-const int SIMULATION_STEPS = 500;
+void circleWater(Configuration &configuration, int grid_num, int radius);
+
+int horizontalLine(Configuration &conf) {
+    std::vector<std::pair<int, int>> waterIndices = {};
+    int grid_num = 50;
+    for (int i = 1; i < grid_num - 1; ++i) {
+        for (int j = 1; j < grid_num - 1; ++j) {
+            if (j > round(grid_num * 0.6)) {
+                waterIndices.emplace_back(i, j);
+            }
+        }
+    }
 
 
-double randfrom(double min, double max);
+    conf.setGridSize(1).setParticlesPerGrid(6).setGridNum(grid_num)
+            .setPxPerCell(5).setSimulationSteps(1000)
+            .setWaterIndices(waterIndices);
 
-void fillSolverData(Solver &solver);
+}
 
-void simulate(Solver &solver, SimpleRenderer &renderer);
+void basketSolid(Configuration &conf, int grid_num = 30) {
+    std::vector<std::pair<int, int>> waterIndices = {};
+    for (int i = 1; i < grid_num - 1; ++i) {
+        for (int j = 1; j < grid_num - 1; ++j) {
+            if (j < round(grid_num * 0.6) && i > round(grid_num * 0.3) && i < round(grid_num * 0.7)) {
+                waterIndices.emplace_back(i, j);
+            }
+        }
+    }
+
+
+    conf.setGridSize(1).setParticlesPerGrid(4).setGridNum(grid_num)
+            .setPxPerCell(5).setSimulationSteps(1000)
+            .setWaterIndices(waterIndices);
+}
+
+void solidWithAddingWater(Configuration &conf, int grid_num, int frequency, int first, int px_size) {
+    std::vector<std::pair<int, int>> waterIndices = {};
+    for (int i = 1; i < grid_num - 1; ++i) {
+        for (int j = 1; j < grid_num - 1; ++j) {
+            if (j > round(grid_num * 0.6)) {
+                waterIndices.emplace_back(i, j);
+            }
+        }
+    }
+
+    std::vector<std::pair<int, int>> additionalWater = {};
+    for (int i = 1; i < grid_num - 1; ++i) {
+        for (int j = 1; j < grid_num - 1; ++j) {
+            if (j < round(grid_num * 0.3) && j > round(grid_num * 0.1) && i > round(grid_num * 0.7) &&
+                i < round(grid_num * 0.8)) {
+                additionalWater.emplace_back(i, j);
+            }
+
+            if (j < round(grid_num * 0.5) && j > round(grid_num * 0.3) && i > round(grid_num * 0.6) &&
+                i < round(grid_num * 0.84)) {
+                additionalWater.emplace_back(i, j);
+            }
+        }
+    }
+
+    conf.setGridSize(1).setParticlesPerGrid(2).setGridNum(grid_num)
+            .setPxPerCell(px_size).setSimulationSteps(1000)
+            .setWaterIndices(waterIndices).setAdditionalWater(additionalWater, frequency, first);
+}
 
 int main() {
-    Solver solver = Solver();
+    Configuration conf = Configuration();
 
-    SimpleRenderer renderer = SimpleRenderer(PX_PER_CELL, GRID_NUM);
 
-    fillSolverData(solver);
+//    horizontalLine(conf);
+//
+//    basketSolid(conf);
+//
+//    solidWithAddingWater(conf, 100);
+//
+    circleWater(conf, 100, 25);
 
-    simulate(solver, renderer);
 
+    conf.start();
     return 0;
 }
 
-void simulate(Solver &solver, SimpleRenderer &renderer) {
-    renderer.saveImage("images/" + std::to_string(0) + ".jpeg", solver.spaceTypes, solver.particles,
-                       RenderMode::Square);
-    for (int frameNum = 1; frameNum < SIMULATION_STEPS; ++frameNum) {
-        if (frameNum % 40 == 0) {
-            for (int i = 0; i < GRID_NUM; ++i) {
-                for (int j = 0; j < GRID_NUM; ++j) {
-                    if (!(j == 0 || i == 0 || j == GRID_NUM - 1 || i == GRID_NUM - 1)) {
+void circleWater(Configuration &conf, int grid_num, int radius) {
+    std::vector<std::pair<int, int>> waterIndices = {};
 
-
-                        //Остальные заполняем случайно
-                        if (i > round(GRID_NUM * 0.2) && i < round(GRID_NUM * 0.4) && j > round(GRID_NUM * 0.2) &&
-                            j < round(GRID_NUM * 0.6)) {
-                            for (int k = 0; k < 4; ++k) {
-                                double r1 = randfrom(0.0, 1.0);
-                                double r2 = randfrom(0.0, 1.0);
-                                Particle p = Particle();
-                                p.pos_x = i * solver.dx + solver.dx * r1;
-                                p.pos_y = j * solver.dx + solver.dx * r2;
-                                solver.particles.push_back(p);
-                            }
-
-
-                            solver.particles_size += 4;
-                        }
-                    }
-                }
+    int center_x = grid_num / 2;
+    int center_y = grid_num / 2;
+    for (int i = 1; i < grid_num - 1; ++i) {
+        for (int j = 1; j < grid_num - 1; ++j) {
+            if (pow(i - center_x, 2) + pow(j - center_y, 2) <= pow(radius, 2) && j <= center_y) {
+                waterIndices.emplace_back(i, j);
             }
-        }
-        std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
-        solver.performStep();
-        renderer.saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver.spaceTypes, solver.particles,
-                           RenderMode::Square);
-    }
-
-}
-
-//"Случайное" вещ. число в пределах от min до max
-double randfrom(double min, double max) {
-    double range = (max - min);
-    double div = RAND_MAX / range;
-    return min + (rand() / div);
-}
-
-void fillSolverData(Solver &solver) {
-    float dx = (float) GRID_SIZE / GRID_NUM;
-    vector<Particle> particles;
-    int particles_size = 0;
-    for (int i = 0; i < GRID_NUM; ++i) {
-        for (int j = 0; j < GRID_NUM; ++j) {
-            if (!(j == 0 || i == 0 || j == GRID_NUM - 1 || i == GRID_NUM - 1 )) {
-
-
-                //Остальные заполняем случайно
-                if (j > round(GRID_NUM * 0.4)) {
-                    for (int k = 0; k < 4; ++k) {
-                        double r1 = randfrom(0.0, 1.0);
-                        double r2 = randfrom(0.0, 1.0);
-                        Particle p = Particle();
-                        p.pos_x = i * dx + dx * r1;
-                        p.pos_y = j * dx + dx * r2;
-                        particles.push_back(p);
-                    }
-
-
-                    particles_size += 4;
-                }
-            }
+//            if (pow((j-center_y), 2) - pow((i - center_x), 2) < 100) {
+//                waterIndices.emplace_back(i, j);
+//            }
+//            if (exp10f(i) * sin(i * j) < i * j) {
+//                waterIndices.emplace_back(i, j);
+//
+//            }
         }
     }
+    std::vector<std::pair<int, int>> additionalWater = waterIndices;
 
-    vector<float> vx(GRID_NUM * (GRID_NUM + 1));
-    for (int i = 0; i < GRID_NUM * (GRID_NUM + 1); ++i)
-        vx[i] = 0;
-
-
-    vector<float> pressure(GRID_NUM * GRID_NUM);
-    for (int i = 0; i < GRID_NUM * (GRID_NUM); ++i)
-        pressure[i] = 0;
-
-
-    solver.size = GRID_NUM;
-    solver.particles_size = particles_size;
-    vector<float> vy((GRID_NUM + 1) * GRID_NUM);
-    for (int i = 1; i < GRID_NUM - 1; ++i) {
-        for (int j = 1; j < GRID_NUM; j++) {
-            vy[solver.getIdxY(i, j)] = 0;
-        }
-    }
-    solver.particles = particles;
-    solver.dx = dx;
-    solver.vx = vx;
-    solver.vy = vy;
-    solver.pressure = pressure;
-
-    solver.setParameters();
+    conf.setGridSize(1).setParticlesPerGrid(4).setGridNum(grid_num)
+            .setPxPerCell(4).setSimulationSteps(1000)
+            .setWaterIndices(waterIndices).setAdditionalWater(additionalWater, 1000, 500);
 }
 

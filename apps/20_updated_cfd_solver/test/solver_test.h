@@ -7,7 +7,7 @@
 
 using std::vector;
 
-float EPS = 10e-5;
+double EPS = 10e-5;
 
 #define TS_ASSERT_VECTOR_EQUALS(vec, answer) \
     for (int i = 0; i < vec.size(); i++) {   \
@@ -76,7 +76,7 @@ public:
                      3, 2};
         solver.dx = 1;
         solver.size = 2;
-        float gt_dt = 0.311283475;
+        double gt_dt = 0.311283475;
 
         solver.countTimeDelta(solver.vx.data(), solver.vy.data());
 
@@ -90,7 +90,7 @@ public:
                      3, 2};
         solver.dt = 0.5;
         solver.size = 2;
-        vector<float> gt = {
+        vector<double> gt = {
                 4.09, 3.09,
                 1.09, 0.09,
                 -1.91, -2.91};
@@ -105,7 +105,7 @@ public:
     void testCalcNegativeDivergence() {
         Solver solver = Solver();
         basicSolidSetup(solver);
-        vector<float> gt = {
+        vector<double> gt = {
                 0, 0, 0, 0, 0, 0,
                 0, 0, 2, 2, 8, 0,
                 0, -2, 0, 0, 6, 0,
@@ -124,7 +124,7 @@ public:
         Solver solver = Solver();
         basicSolidSetup(solver);
         solver.density = 0.5;
-        vector<float> gt_press_diag = {
+        vector<double> gt_press_diag = {
                 0, 0, 0, 0, 0, 0,
                 0, 4, 6, 6, 4, 0,
                 0, 6, 8, 8, 6, 0,
@@ -132,7 +132,7 @@ public:
                 0, 4, 0, 6, 4, 0,
                 0, 0, 0, 0, 0, 0,
         };
-        vector<float> gt_press_x = {
+        vector<double> gt_press_x = {
                 0,  0,  0,  0, 0, 0,
                 0, -2, -2, -2, 0, 0,
                 0, -2, -2, -2, 0, 0,
@@ -140,7 +140,7 @@ public:
                 0,  0,  0, -2, 0, 0,
                 0,  0,  0,  0, 0, 0,
         };
-        vector<float> gt_press_y = {
+        vector<double> gt_press_y = {
                 0,  0,  0,  0,  0, 0,
                 0,  0,  0,  0,  0, 0,
                 0, -2, -2, -2, -2, 0,
@@ -159,19 +159,19 @@ public:
     void testDotProduct() {
         Solver solver = Solver();
         solver.size = 3;
-        vector<float> first = {
+        vector<double> first = {
                 1, 1, 1,
                 2, 2, 2,
                 1, 1, 1
         };
-        vector<float> second = {
+        vector<double> second = {
                 0, 0, 0,
                 3.14, -2.3, 1,
                 1, 5, 1
         };
-        float gt = 10.68;
+        double gt = 10.68;
 
-        float res = solver.dotProduct(first.data(), second.data());
+        double res = solver.dotProduct(first.data(), second.data());
 
         TS_ASSERT_DELTA(res, gt, EPS)
 

@@ -27,7 +27,7 @@ public:
     SimpleRenderer(int _grid_px_size, int _grid_num);
 
     void saveImage(const std::string &image_name, std::vector<SpaceType> &spaceTypes,
-                   std::vector<Particle> , RenderMode mode) const;
+                   std::vector<Particle>, RenderMode mode) const;
 
     void fillEmptyImage(vector<unsigned char> &image, std::vector<SpaceType> &spaceTypes) const;
 
@@ -40,19 +40,21 @@ public:
 
     void fillPixel(vector<unsigned char> &image, int indx, Color color) const;
 
-    bool isFluid(int i, vector<Particle> &particles, int particle_indx, float U0, float dx, float dy) const;
+    bool isFluid(int i, int j, vector<Particle> &particles, int particle_indx, float U0, float min_x, float max_x, float min_y, float max_y) const;
 
-    double countPotential(int i, Particle &particle, float dx, float dy) const;
+    double countPotential(int i, int j, Particle &particle, float min_x, float max_x, float min_y, float max_y) const;
 
-    double countDistance(int indx, Particle &particle, float dx, float dy) const;
+    double countDistance(int i, int j, Particle &particle, float min_x, float max_x, float min_y, float max_y) const;
 
     void drawCircle(vector<unsigned char> &image, Particle &particle, int radius) const;
 
-    vector<int> getIndices(vector<Particle> &particles, int particle_idx, float u0, float &dx, float &dy) const;
+    vector<std::pair<int, int>>
+    getIndices(vector<Particle> &particles, int particle_idx, float u0, float &left_x, float &right_x, float &top_y, float &bot_y) const;
 
     int getIndex(float x) const;
 
-    void fillSquareImage(vector<unsigned char> &image, vector<SpaceType> &spaceTypes, vector<Particle> &particles) const;
+    void
+    fillSquareImage(vector<unsigned char> &image, vector<SpaceType> &spaceTypes, vector<Particle> &particles) const;
 
     void addToPixel(vector<unsigned char> &image, int indx, Color color) const;
 
@@ -61,6 +63,8 @@ public:
     Color countToColor(int count) const;
 
     unsigned char cutValue(unsigned char from, unsigned char to, int w) const;
+
+    void interpolate(vector<unsigned char> &image, int kernelSize) const;
 };
 
 
