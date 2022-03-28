@@ -101,6 +101,8 @@ public:
     void interpolate(vector<unsigned char> &image, int kernelSize) const;
 
     double dx = 0;
+
+    bool isFilled(vector<unsigned char> &image, int index);
 };
 
 

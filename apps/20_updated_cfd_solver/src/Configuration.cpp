@@ -85,7 +85,8 @@ void Configuration::simulate() {
             t += solver->dt;
         }
         solver->changeParticlesNum();
-        if (frameNum % 20 == 0) {
+
+        if (frameNum % 50 == 0) {
             solver->deleteUnnecessaryParticles();
         }
         renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver->spaceTypes, solver->particles,

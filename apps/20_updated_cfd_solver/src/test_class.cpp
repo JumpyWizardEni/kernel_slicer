@@ -656,7 +656,7 @@ void Solver::advectParticles() {
         particle.pos_y += particle.vy * dt;
 
 
-        double velocityCoef = 0.9;
+        double velocityCoef = 0.5;
         double dxCoef = 1;
 
         if (particle.vx > 0) {
@@ -717,9 +717,9 @@ void Solver::deleteUnnecessaryParticles() {
     }
     for (auto &count: counts) {
         int c = count.second.size();
-        if (c > 15) {
+        if (c > 40) {
             std::sort(count.second.begin(), count.second.end());
-            for (int i = c - 1; i >= 15; --i) {
+            for (int i = c - 1; i >= 40; --i) {
                 particles.erase(particles.begin() + count.second[i]);
                 particles_size--;
             }
@@ -742,7 +742,7 @@ void Solver::changeParticlesNum() {
     for (auto &count: counts) {
         int c = count.second.size();
         if (c <= 2) {
-            for (int i = c; i < 3; ++i) {
+            for (int i = c; i < 5; ++i) {
                 particles.push_back(getMeanParticle(count.second));
                 particles_size++;
             }

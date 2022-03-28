@@ -113,9 +113,12 @@ void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle>
         float max_x, max_y, min_x, min_y;
         vector<std::pair<int, int>> fillIndices = std::move(getIndices(p, 0, U0, min_x, max_x, min_y, max_y));
         for (auto &ind: fillIndices) {
-            if (isFluid(ind.first, ind.second, p, 0, U0, min_x, max_x, min_y, max_y)) {
-                fillPixel(image, 4 * (ind.first + grid_num * grid_px_size * ind.second), Color(0, 1, 1) * (c.second.size() / 2) + fluidColor);
+            if (!isFilled(image, 4 * (ind.first + grid_num * grid_px_size * ind.second))) {
+                if (isFluid(ind.first, ind.second, p, 0, U0, min_x, max_x, min_y, max_y)) {
+                    fillPixel(image, 4 * (ind.first + grid_num * grid_px_size * ind.second), Color(0, 1, 1) * (c.second.size() / 2) + fluidColor);
+                }
             }
+
         }
     }
 
@@ -308,6 +311,10 @@ void SimpleRenderer::interpolate(vector<unsigned char> &image, int kernelSize) c
             }
         }
     }
+}
+
+bool SimpleRenderer::isFilled(vector<unsigned char> &image, int index) {
+    return !(image[index] == 255 && image[index + 1] == 255 && image[index + 2] == 255);
 }
 
 
