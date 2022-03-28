@@ -95,7 +95,7 @@ public:
                 1.09, 0.09,
                 -1.91, -2.91};
 
-        solver.addForces(solver.vy.data(), solver.g);
+        solver.kernel2D_addForces(0, 0, solver.vy.data(), solver.g, nullptr);
 
         TS_ASSERT_VECTOR_EQUALS(solver.vy, gt)
     }
@@ -115,7 +115,7 @@ public:
 
         };
 
-        solver.calcNegativeDivergence();
+        solver.kernel2D_calcNegativeDivergence(0, 0, nullptr, nullptr, nullptr, nullptr);
 
         TS_ASSERT_VECTOR_EQUALS(solver.rhs, gt)
     }
@@ -149,7 +149,7 @@ public:
                 0,  0,  0,  0,  0, 0,
         };
 
-        solver.fillPressureMatrix();
+        solver.kernel2D_fillPressureMatrix(0, 0, nullptr, nullptr, nullptr, nullptr);
 
         TS_ASSERT_VECTOR_EQUALS(solver.press_diag, gt_press_diag)
         TS_ASSERT_VECTOR_EQUALS(solver.pressX, gt_press_x)

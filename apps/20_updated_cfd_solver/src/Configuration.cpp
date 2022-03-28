@@ -46,7 +46,6 @@ void Configuration::fillSolverData() {
     solver->vx = vx;
     solver->vy = vy;
     solver->pressure = pressure;
-    solver->solid_indices = solid_indices;
 
     solver->setParameters();
 }
@@ -78,13 +77,13 @@ void Configuration::simulate() {
         float t = 0;
         float t_frame = 1.0 / 60;
         while (t < t_frame) {
-            solver->performStep();
+            solver->performStep(nullptr);
             t += solver->dt;
         }
-        solver->changeParticlesNum();
+//        solver->changeParticlesNum();
 
         if (frameNum % 50 == 0) {
-            solver->deleteUnnecessaryParticles();
+//            solver->deleteUnnecessaryParticles();
         }
         renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver->spaceTypes, solver->particles,
                             RenderMode::Blobbies);
