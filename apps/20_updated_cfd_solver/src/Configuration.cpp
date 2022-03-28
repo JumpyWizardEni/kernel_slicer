@@ -54,9 +54,6 @@ void Configuration::fillSolverData() {
 
 void Configuration::simulate() {
     double dx = (double) grid_size / grid_num;
-    solver->createSpaceTypes();
-    renderer->saveImage("images/" + std::to_string(1) + ".jpeg", solver->spaceTypes, solver->particles,
-                        RenderMode::Blobbies);
     for (int frameNum = 1; frameNum < simulation_steps; ++frameNum) {
 //        if (frameNum % 20 == 0) {
 //        }

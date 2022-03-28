@@ -220,8 +220,8 @@ SimpleRenderer::getIndices(vector<Particle> &particles, int particle_idx, float 
     right_x = max_x + radius;
     top_y = min_y - radius;
     bot_y = max_y + radius;
-    for (int i = round(left_x); i <= round(right_x); ++i) {
-        for (int j = round(top_y); j <= round(bot_y); ++j) {
+    for (int j = round(top_y); j <= round(bot_y); ++j) {
+        for (int i = round(left_x); i <= round(right_x); ++i) {
             if (i >= grid_px_size && i < (grid_num - 1) * (grid_px_size) && j >= grid_px_size &&
                 j < (grid_num - 1) * (grid_px_size)) {
                 res.emplace_back(i, j);
@@ -314,7 +314,7 @@ void SimpleRenderer::interpolate(vector<unsigned char> &image, int kernelSize) c
 }
 
 bool SimpleRenderer::isFilled(vector<unsigned char> &image, int index) {
-    return !(image[index] == 255 && image[index + 1] == 255 && image[index + 2] == 255);
+    return image[index] != 255;
 }
 
 

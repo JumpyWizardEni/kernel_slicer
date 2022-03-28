@@ -41,7 +41,7 @@ public:
     double dx = 0.125; // Размер сетки в условных единицах
     double density = 1000;
     const double g = 9.82; // Ускорение свободного падения
-    const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
+    const int PCG_MAX_ITERS = 200; // Максимальное число итераций для PCG алгоритма
     const double TOL = 1e-9; // epsilon для давления
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
@@ -150,15 +150,15 @@ public:
 
     void visualisePressure();
 
-    void fillWithZeros(double *v, int size);
+    void fillWithValue(double *v, int size, double value = 0);
 
     void checkAdvected(double *q, double *prev_q, double *vx, double *vy);
 
     void assembleGridFromParticles();
 
-    void clearGrid();
+    void kernel1D_clearSpaceTypes(int s, SpaceType *spaceTypes);
 
-    void createSpaceTypes();
+    void kernel2D_createSolid(int h, int w, SpaceType *_spaceTypes);
 
     void getVelocitiesFromParticles();
 
@@ -181,6 +181,8 @@ public:
     int roundValue(int i, int i1, double d);
 
     void deleteUnnecessaryParticles();
+
+    void kernel1D_createFluidFromParticles(int s, Particle *_particles, SpaceType *_spaceTypes);
 };
 
 
