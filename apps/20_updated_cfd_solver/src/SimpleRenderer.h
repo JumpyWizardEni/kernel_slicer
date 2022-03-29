@@ -79,7 +79,7 @@ public:
 
     double countDistance(int i, int j, Particle &particle, float min_x, float max_x, float min_y, float max_y) const;
 
-    void drawCircle(vector<unsigned char> &image, Particle &particle, int radius) const;
+    void drawCircle(vector<unsigned char> &image, Particle &particle, int radius);
 
     vector<std::pair<int, int>>
     getIndices(vector<Particle> &particles, int particle_idx, float u0, float &left_x, float &right_x, float &top_y,

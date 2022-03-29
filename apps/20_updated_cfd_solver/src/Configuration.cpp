@@ -24,8 +24,8 @@ void Configuration::fillSolverData() {
     int particles_size = 0;
     for (int i = 0; i < water_indices.size(); ++i) {
         for (int k = 0; k < particles_per_grid; ++k) {
-            double r1 = randfrom(0.0, 1.0);
-            double r2 = randfrom(0.0, 1.0);
+            double r1 = randfrom(0.4, 0.6);
+            double r2 = randfrom(0.4, 0.6);
             Particle p = Particle();
             p.pos_x = water_indices[i].first * dx + dx * r1;
             p.pos_y = water_indices[i].second * dx + dx * r2;
@@ -46,6 +46,7 @@ void Configuration::fillSolverData() {
     solver->vx = vx;
     solver->vy = vy;
     solver->pressure = pressure;
+    solver->solid_indices = std::move(solid_indices);
 
     solver->setParameters();
 }
@@ -53,6 +54,9 @@ void Configuration::fillSolverData() {
 
 void Configuration::simulate() {
     double dx = (double) grid_size / grid_num;
+    solver->createSpaceTypes();
+//    renderer->saveImage("images/" + std::to_string(1) + ".jpeg", solver->spaceTypes, solver->particles,
+//                        RenderMode::Blobbies);
     for (int frameNum = 1; frameNum < simulation_steps; ++frameNum) {
 //        if (frameNum % 20 == 0) {
 //        }
@@ -75,18 +79,17 @@ void Configuration::simulate() {
         }
         std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
         float t = 0;
-        float t_frame = 1.0 / 60;
-        while (t < t_frame) {
-            solver->performStep(nullptr);
-            t += solver->dt;
-        }
+        float t_frame = 1.0 / 30;
+//        while (t < t_frame) {
+            solver->performStep();
+//            t += solver->dt;
+//        }
 //        solver->changeParticlesNum();
-
-        if (frameNum % 50 == 0) {
+        if (frameNum % 30 == 0) {
 //            solver->deleteUnnecessaryParticles();
         }
         renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver->spaceTypes, solver->particles,
-                            RenderMode::Blobbies);
+                            RenderMode::Square);
     }
 
 }

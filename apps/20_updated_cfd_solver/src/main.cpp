@@ -8,57 +8,67 @@ void circleWater(Configuration &configuration, int grid_num, int radius);
 
 int horizontalLine(Configuration &conf) {
     std::vector<std::pair<int, int>> waterIndices = {};
-    int grid_num = 50;
+    int grid_num = 100;
     for (int i = 1; i < grid_num - 1; ++i) {
         for (int j = 1; j < grid_num - 1; ++j) {
-            if ((i < round(grid_num * 0.2) || i > round(grid_num * 0.8))) {
-                waterIndices.emplace_back(i, j);
+//            if (i > round(grid_num * 0.8) || ((i > round(grid_num * 0.4) && ((i < round(grid_num * 0.6)))))) && j >= round(grid_num * 0.4)) {
+//                (i < round(grid_num * 0.2) ||  waterIndices.emplace_back(i, j);
+//            }
+            if ((i >= 1 && i < round(grid_num * 0.1)) || (i > round(grid_num * 0.8) && i < grid_num - 2)) {
+                    waterIndices.emplace_back(i, j);
             }
         }
     }
-    std::vector<std::pair<int, int>> additionalWater = {};
-    for (int i = 1; i < grid_num - 1; ++i) {
-        for (int j = 1; j < grid_num - 1; ++j) {
+//    std::vector<std::pair<int, int>> additionalWater = {};
+//    for (int i = 1; i < grid_num - 1; ++i) {
+//        for (int j = 1; j < grid_num - 1; ++j) {
+//            if (j < round(grid_num * 0.3) && j > round(grid_num * 0.1) && i > round(grid_num * 0.7) &&
+//                i < round(grid_num * 0.8)) {
+//                additionalWater.emplace_back(i, j);
+//            }
+//
+//            if (j < round(grid_num * 0.5) && j > round(grid_num * 0.3) && i > round(grid_num * 0.6) &&
+//                i < round(grid_num * 0.84)) {
+//                additionalWater.emplace_back(i, j);
+//            }
+//        }
+//    }
 
-            if (j < round(grid_num * 0.3) && j > round(grid_num * 0.1) && i > round(grid_num * 0.7) &&
-                i < round(grid_num * 0.8)) {
-                additionalWater.emplace_back(i, j);
-            }
-
-            if (j < round(grid_num * 0.5) && j > round(grid_num * 0.3) && i > round(grid_num * 0.6) &&
-                i < round(grid_num * 0.84)) {
-                additionalWater.emplace_back(i, j);
-            }
-        }
-    }
-
-    conf.setGridSize(5).setParticlesPerGrid(5).setGridNum(grid_num)
-            .setPxPerCell(3).setSimulationSteps(1000)
-            .setWaterIndices(waterIndices).setAdditionalWater(additionalWater, 200, 11000);
+    conf.setGridSize(1).setParticlesPerGrid(4).setGridNum(grid_num)
+            .setPxPerCell(2).setSimulationSteps(1000)
+            .setWaterIndices(waterIndices);
 
 }
 
-void basketSolid(Configuration &conf, int grid_num = 30) {
+void basketSolid(Configuration &conf, int grid_num = 40) {
     std::vector<std::pair<int, int>> waterIndices = {};
     for (int i = 1; i < grid_num - 1; ++i) {
         for (int j = 1; j < grid_num - 1; ++j) {
-            if (j < round(grid_num * 0.6) && i > round(grid_num * 0.3) && i < round(grid_num * 0.7)) {
+            if (j < round(grid_num * 0.4) && i > round(grid_num * 0.3) && i < round(grid_num * 0.7)) {
                 waterIndices.emplace_back(i, j);
             }
         }
     }
 
+    vector<int> solid_indices = {};
+    for (int i = 1; i < grid_num - 1; ++i) {
+        for (int j = 1; j < grid_num - 1; ++j) {
+            if (j < round(grid_num * 0.6) && j > round(grid_num * 0.5) && i < round(grid_num * 0.7) && i > round(grid_num * 0.4)) {
+                solid_indices.push_back(i + j * grid_num);
+            }
+        }
+    }
 
-    conf.setGridSize(grid_num).setParticlesPerGrid(4).setGridNum(grid_num)
+    conf.setGridSize(1).setParticlesPerGrid(8).setGridNum(grid_num)
             .setPxPerCell(5).setSimulationSteps(1000)
-            .setWaterIndices(waterIndices);
+            .setWaterIndices(waterIndices).setAdditionalSolidIndices(solid_indices);
 }
 
 void solidWithAddingWater(Configuration &conf, int grid_num, int frequency, int first, int px_size) {
     std::vector<std::pair<int, int>> waterIndices = {};
     for (int i = 1; i < grid_num - 1; ++i) {
         for (int j = 1; j < grid_num - 1; ++j) {
-            if (j > round(grid_num * 0.6)) {
+            if (j > round(grid_num * 0.6) && (i < round(grid_num * 0.8) && (i > round(grid_num * 0.6)))) {
                 waterIndices.emplace_back(i, j);
             }
         }
@@ -67,19 +77,19 @@ void solidWithAddingWater(Configuration &conf, int grid_num, int frequency, int 
     std::vector<std::pair<int, int>> additionalWater = {};
     for (int i = 1; i < grid_num - 1; ++i) {
         for (int j = 1; j < grid_num - 1; ++j) {
-            if (j < round(grid_num * 0.3) && j > round(grid_num * 0.1) && i > round(grid_num * 0.7) &&
-                i < round(grid_num * 0.8)) {
+            if (j < round(grid_num * 0.3) && j > round(grid_num * 0.1) && i > round(grid_num * 0.1) &&
+                i < round(grid_num * 0.3)) {
                 additionalWater.emplace_back(i, j);
             }
 
-            if (j < round(grid_num * 0.5) && j > round(grid_num * 0.3) && i > round(grid_num * 0.6) &&
-                i < round(grid_num * 0.84)) {
-                additionalWater.emplace_back(i, j);
-            }
+//            if (j < round(grid_num * 0.5) && j > round(grid_num * 0.3) && i > round(grid_num * 0.6) &&
+//                i < round(grid_num * 0.84)) {
+//                additionalWater.emplace_back(i, j);
+//            }
         }
     }
 
-    conf.setGridSize(1).setParticlesPerGrid(3).setGridNum(grid_num)
+    conf.setGridSize(10).setParticlesPerGrid(12).setGridNum(grid_num)
             .setPxPerCell(px_size).setSimulationSteps(1000)
             .setWaterIndices(waterIndices).setAdditionalWater(additionalWater, frequency, first);
 }
@@ -88,9 +98,9 @@ int main() {
     Configuration conf = Configuration();
 
 
-    horizontalLine(conf);
+//    horizontalLine(conf);
 
-//    basketSolid(conf);
+    basketSolid(conf);
 //
 //    solidWithAddingWater(conf, 100, 50, 10, 3);
 //

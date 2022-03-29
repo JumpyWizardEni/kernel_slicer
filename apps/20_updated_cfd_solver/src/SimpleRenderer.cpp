@@ -98,9 +98,11 @@ void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle>
 
     for (auto &c: part_count) {
 
-        if (c.second.size() < 3) {
+        if (c.second.size() <= 2) {
+//            drawCircle(image, particles[c.second[0]], radius - grid_px_size);
             continue;
         }
+
         float U0 = 5000;
         radius = 8;
         max_xy = 3;
@@ -115,7 +117,7 @@ void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle>
         for (auto &ind: fillIndices) {
             if (!isFilled(image, 4 * (ind.first + grid_num * grid_px_size * ind.second))) {
                 if (isFluid(ind.first, ind.second, p, 0, U0, min_x, max_x, min_y, max_y)) {
-                    fillPixel(image, 4 * (ind.first + grid_num * grid_px_size * ind.second), Color(0, 1, 1) * (c.second.size() / 2) + fluidColor);
+                    fillPixel(image, 4 * (ind.first + grid_num * grid_px_size * ind.second), Color(0, 1, 1) * (c.second.size() / 10) + fluidColor);
                 }
             }
 
@@ -180,17 +182,19 @@ double SimpleRenderer::countDistance(int i, int j, Particle &particle, float min
     return distance;
 }
 
-void SimpleRenderer::drawCircle(vector<unsigned char> &image, Particle &particle, int radius) const {
+void SimpleRenderer::drawCircle(vector<unsigned char> &image, Particle &particle, int radius) {
     const Color fluidColor = Color(5, 125, 158);
-    int x = round(particle.pos_x * grid_num);
-    int y = round(particle.pos_y * grid_num);
+    int x = round(particle.pos_x / dx);
+    int y = round(particle.pos_y / dx);
     int x_center = radius / 2;
     int y_center = radius / 2;
     for (int j = 0; j < radius; ++j) {
         for (int k = 0; k < radius; ++k) {
-            if (pow(j - x_center, 2) + pow(k - y_center, 2) <= radius * radius) {
+            if (pow(j - x_center, 2) + pow(k - y_center, 2) <= radius * radius / 4) {
                 int indx = countPixelIndex(x + y * grid_num, j, k);
-                fillPixel(image, indx, fluidColor);
+                if (!isFilled(image, indx)) {
+                    fillPixel(image, indx, fluidColor);
+                }
 
             }
 
