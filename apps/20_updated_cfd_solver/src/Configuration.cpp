@@ -55,8 +55,8 @@ void Configuration::fillSolverData() {
 void Configuration::simulate() {
     double dx = (double) grid_size / grid_num;
     solver->createSpaceTypes();
-//    renderer->saveImage("images/" + std::to_string(1) + ".jpeg", solver->spaceTypes, solver->particles,
-//                        RenderMode::Blobbies);
+    renderer->saveImage("images/" + std::to_string(1) + ".jpeg", solver->spaceTypes, solver->particles,
+                        RenderMode::Blobbies);
     for (int frameNum = 1; frameNum < simulation_steps; ++frameNum) {
 //        if (frameNum % 20 == 0) {
 //        }
@@ -79,17 +79,13 @@ void Configuration::simulate() {
         }
         std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
         float t = 0;
-        float t_frame = 1.0 / 30;
-//        while (t < t_frame) {
+        float t_frame = 1.0 / 60;
+        while (t < t_frame) {
             solver->performStep();
-//            t += solver->dt;
-//        }
-//        solver->changeParticlesNum();
-        if (frameNum % 30 == 0) {
-//            solver->deleteUnnecessaryParticles();
+            t += solver->dt;
         }
         renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver->spaceTypes, solver->particles,
-                            RenderMode::Square);
+                            RenderMode::Blobbies);
     }
 
 }

@@ -106,7 +106,7 @@ void Solver::countTimeDelta(const double *p_vx, const double *p_vy) {
     }
     maximum = std::sqrt(maximum);
     maximum += std::sqrt(5 * dx * std::abs(g)); // чтобы не было деления на 0
-    dt = 3 * dx / maximum;
+    dt = 5 * dx / maximum;
 }
 
 //Добавляем силу тяжести
@@ -681,34 +681,35 @@ void Solver::advectParticles() {
                                              y);
         particle.vx = alpha * getVelocityX(vx.data(), x, y) + (1 - alpha) * (particle.vx + vx_interpolated);
         particle.vy = alpha * getVelocityY(vy.data(), x, y) + (1 - alpha) * (particle.vy + vy_interpolated);
-        particle.pos_x += particle.vx * dt;
-        particle.pos_y += particle.vy * dt;
-        x = roundValue(0, size - 1, particle.pos_x / dx);
-        int is = 0;
 
+        //По оси X
+        particle.pos_x += particle.vx * dt;
+
+        x = roundValue(0, size - 1, particle.pos_x / dx);
+
+        //Границы
         while (x == 0 || particle.pos_x < 0 || x == size - 1 || particle.pos_x > dx * size) {
             particle.pos_x -= particle.vx * dt;
             x = roundValue(0, size - 1, particle.pos_x / dx);
-            is = 1;
         }
-        if (is) {
-            particle.vx = -particle.vx;
-        }
-        is = 0;
-        y = roundValue(0, size - 1, particle.pos_y / dx);
-        while (y == 0 || particle.pos_y < 0 || y == size - 1 || particle.pos_y > dx * size) {
-            particle.pos_y -= particle.vy * dt;
-            y = roundValue(0, size - 1, particle.pos_y / dx);
-            is = 1;
-        }
-        if (is) {
-            particle.vy = -particle.vy;
-        }
-//
+
+        //Другие твердые клетки
         while(spaceTypes[getIdx(x, y)] == SpaceType::Solid) {
             particle.pos_x -= particle.vx * dt;
             x = roundValue(0, size - 1, particle.pos_x / dx);
         }
+
+        //По оси Y
+        particle.pos_y += particle.vy * dt;
+        y = roundValue(0, size - 1, particle.pos_y / dx);
+
+        //Границы
+        while (y == 0 || particle.pos_y < 0 || y == size - 1 || particle.pos_y > dx * size) {
+            particle.pos_y -= particle.vy * dt;
+            y = roundValue(0, size - 1, particle.pos_y / dx);
+        }
+//
+        //Другие твердые клетки
         while(spaceTypes[getIdx(x, y)] == SpaceType::Solid) {
             particle.pos_y -= particle.vy * dt;
             y = roundValue(0, size - 1, particle.pos_y / dx);

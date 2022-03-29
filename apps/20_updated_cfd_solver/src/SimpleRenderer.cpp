@@ -11,7 +11,7 @@ SimpleRenderer::SimpleRenderer(int _grid_px_size, int _grid_num) {
 }
 
 void SimpleRenderer::saveImage(const std::string &image_name, std::vector<SpaceType> &spaceTypes,
-                               std::vector<Particle> particles, RenderMode mode){
+                               std::vector<Particle> particles, RenderMode mode) {
     std::vector<unsigned char> image;
     image.resize(grid_num * grid_num * 4 * grid_px_size * grid_px_size, 0);
 
@@ -81,7 +81,7 @@ struct sort_particles_y {
     }
 };
 
-void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle> &particles){
+void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle> &particles) {
     const Color fluidColor = Color(5, 125, 158);
 //    std::sort(particles.begin(), particles.end(), sort_particles_x());
 //    std::sort(particles.begin(), particles.end(), sort_particles_y());
@@ -97,27 +97,32 @@ void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle>
     }
 
     for (auto &c: part_count) {
-
-        if (c.second.size() <= 2) {
-//            drawCircle(image, particles[c.second[0]], radius - grid_px_size);
+        auto &indices = c.second;
+        if (indices.size() <= 2 && indices.size() > 0) {
+            if (indices[0] > 0) {
+                drawCircle(image, particles[indices[0]], radius);
+            }
             continue;
         }
-
+        if (indices[0] < 0 || indices[1] < 0 || indices[2] < 0) {
+            continue;
+        }
         float U0 = 5000;
         radius = 8;
         max_xy = 3;
-        if (c.second.size() <= 4) {
+        if (indices.size() <= 4) {
             U0 = 1000;
             radius = 8;
             max_xy = 2;
         }
-        vector<Particle> p = {particles[c.second[0]], particles[c.second[1]], particles[c.second[2]]};
+        vector<Particle> p = {particles[indices[0]], particles[indices[1]], particles[indices[2]]};
         float max_x, max_y, min_x, min_y;
         vector<std::pair<int, int>> fillIndices = std::move(getIndices(p, 0, U0, min_x, max_x, min_y, max_y));
         for (auto &ind: fillIndices) {
             if (!isFilled(image, 4 * (ind.first + grid_num * grid_px_size * ind.second))) {
                 if (isFluid(ind.first, ind.second, p, 0, U0, min_x, max_x, min_y, max_y)) {
-                    fillPixel(image, 4 * (ind.first + grid_num * grid_px_size * ind.second), Color(0, 1, 1) * (c.second.size() / 10) + fluidColor);
+                    fillPixel(image, 4 * (ind.first + grid_num * grid_px_size * ind.second),
+                              Color(0, 1, 1) * (indices.size() / 4) + fluidColor);
                 }
             }
 

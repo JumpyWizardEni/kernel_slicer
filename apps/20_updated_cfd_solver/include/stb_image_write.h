@@ -1340,7 +1340,7 @@ static int stbiw__jpg_processDU(stbi__write_context *s, int *bitBuf, int *bitCnt
       stbiw__jpg_DCT(&CDU[dataOff], &CDU[dataOff+du_stride], &CDU[dataOff+du_stride*2], &CDU[dataOff+du_stride*3], &CDU[dataOff+du_stride*4],
                      &CDU[dataOff+du_stride*5], &CDU[dataOff+du_stride*6], &CDU[dataOff+du_stride*7]);
    }
-   // Quantize/descale/zigzag the coefficients
+   // Quantize/descale/smallHoleWall the coefficients
    for(y = 0, j=0; y < 8; ++y) {
       for(x = 0; x < 8; ++x,++j) {
          float v;

@@ -44,7 +44,7 @@ public:
     const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
     const double TOL = 1e-9; // epsilon для давления
     double viscosity = 0.0001;
-    int particles_pressure_coef = 1;
+    int particles_pressure_coef = 30;
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
     vector<double> pressure;
