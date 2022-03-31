@@ -3,13 +3,11 @@
 
 #include <string>
 #include <vector>
-#include "test_class.h"
+#include "src/test_class.h"
+#include "IRenderer.h"
 
-enum class RenderMode {
-    Square, Blobbies
-};
 
-class SimpleRenderer {
+class SimpleRenderer: public IRenderer {
 
     class Color {
     public:
@@ -54,12 +52,13 @@ class SimpleRenderer {
     int radius = 12;
     int max_xy = 4;
     int grid_num; // Квадратная сетка
-
+    double dx;
 public:
-    SimpleRenderer(int _grid_px_size, int _grid_num);
+
+    SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size);
 
     void saveImage(const std::string &image_name, std::vector<SpaceType> &spaceTypes,
-                   std::vector<Particle>, RenderMode mode) ;
+                   std::vector<Particle>, RenderMode mode) override;
 
     void fillEmptyImage(vector<unsigned char> &image, std::vector<SpaceType> &spaceTypes) const;
 
@@ -100,9 +99,8 @@ public:
 
     void interpolate(vector<unsigned char> &image, int kernelSize) const;
 
-    double dx = 0;
-
     bool isFilled(vector<unsigned char> &image, int index);
+    ~SimpleRenderer() override = default;
 };
 
 

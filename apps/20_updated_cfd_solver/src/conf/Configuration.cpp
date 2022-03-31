@@ -12,14 +12,13 @@ double Configuration::randfrom(double min, double max) {
 
 void Configuration::start() {
     solver = new Solver();
-    renderer = new SimpleRenderer(px_per_cell, grid_num);
+    renderer = new SimpleRenderer(px_per_cell, grid_num, 1);
     fillSolverData();
     simulate();
 }
 
 void Configuration::fillSolverData() {
     double dx = (double) grid_size / grid_num;
-    renderer->dx = dx;
     vector<Particle> particles;
     int particles_size = 0;
     for (int i = 0; i < water_indices.size(); ++i) {

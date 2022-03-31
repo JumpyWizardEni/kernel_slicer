@@ -64,9 +64,8 @@ add_executable(testapp
         src/test_class.cpp
         src/main.cpp
         include/stb_image_write.h
-        src/SimpleRenderer.cpp
-        src/GridElement.cpp
-        src/Configuration.cpp src/Configuration.h)
+        src/render/SimpleRenderer.cpp
+        src/conf/Configuration.cpp src/conf/Configuration.h src/render/VulkanRender.cpp src/render/VulkanRender.h src/render/IRenderer.h src/conf/ConfigurationBuilder.cpp src/conf/ConfigurationBuilder.h)
 
 set_target_properties(testapp PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 #target_link_libraries(testapp LINK_PUBLIC ${Vulkan_LIBRARY} OpenMP::OpenMP_CXX volk dl glfw)

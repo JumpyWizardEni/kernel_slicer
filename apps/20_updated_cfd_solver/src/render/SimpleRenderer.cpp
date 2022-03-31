@@ -5,9 +5,10 @@
 #include "SimpleRenderer.h"
 #include "include/stb_image_write.h"
 
-SimpleRenderer::SimpleRenderer(int _grid_px_size, int _grid_num) {
+SimpleRenderer::SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size) {
     grid_px_size = _grid_px_size;
     grid_num = _grid_num;
+    dx = ((double)grid_size)/_grid_num;
 }
 
 void SimpleRenderer::saveImage(const std::string &image_name, std::vector<SpaceType> &spaceTypes,

@@ -2,7 +2,7 @@
 #define TEST_CONFIGURATION_H
 
 
-#include "SimpleRenderer.h"
+#include "src/render/SimpleRenderer.h"
 
 class Configuration {
 private:
@@ -17,7 +17,7 @@ private:
     vector<std::pair<int, int>> additional_fluid_indices = {};
     vector<int> solid_indices = {};
     vector<std::pair<int, int>> water_indices = {};
-    SimpleRenderer *renderer = nullptr;
+    IRenderer *renderer = nullptr;
     Solver *solver = nullptr;
     void fillSolverData();
     void simulate();
