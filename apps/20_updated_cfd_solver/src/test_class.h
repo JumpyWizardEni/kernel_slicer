@@ -1,7 +1,7 @@
 #ifndef TEST_TEST_CLASS_H
 #define TEST_TEST_CLASS_H
 
-#include <vector>
+#include <../../TINYSTL/vector>
 
 using std::vector;
 
@@ -24,10 +24,10 @@ struct Particle {
 };
 
 struct GridPICInfo {
-    double sum_vx;
-    double sum_vy;
-    double weight_vx;
-    double weight_vy;
+    double sum_vx = 0;
+    double sum_vy = 0;
+    double weight_vx = 0;
+    double weight_vy = 0;
 };
 
 class Solver {
@@ -70,20 +70,16 @@ public:
     vector<double> diff_vy;
 
     vector<int> mask;
-    vector<int> wavefront;
-
-    vector<int> solid_indices;
 
     Solver();
 
     void setParameters();
 
-    void performStep();
+    void performStep(double *output);
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
     void countTimeDelta(const double *vx, const double *vy);
 
-    void addForces(double *v, double a); // добавляются внешние силы (в нашем случае - сила притяжения)
 
     //TODO test
     double
@@ -97,8 +93,7 @@ public:
 
     void fillPressureMatrix();
 
-    //TODO test
-    void PCG();
+    void kernel2D_addForces(int h, int w, double *v, double a, SpaceType *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
 
     //TODO test
     void applyPreconditioner();
@@ -130,27 +125,11 @@ public:
 
     int getIdxY(int i, int j);
 
-    bool isFluidVelocityX(int i, int j);
-
     void resetParams();
 
     void checkDivergence();
 
     void dirichleCondition();
-
-    bool isFluidVelocityY(int i, int j);
-
-    void checkNonFluidVelocities();
-
-    void visualise();
-
-    void visualiseVx();
-
-    void visualiseSpaceTypes();
-
-    void visualiseVy();
-
-    void visualisePressure();
 
     void fillWithZeros(double *v, int size);
 
@@ -164,7 +143,7 @@ public:
 
     void getVelocitiesFromParticles();
 
-    double kernelFunc(double x, double y);
+    double kFunc(double x, double y);
 
     double h2(double x);
 
@@ -172,20 +151,32 @@ public:
 
     void countDiffXY();
 
-    double randfrom1(double min, double max);
-
-    void changeParticlesNum();
-
-    Particle getMeanParticle(vector<int> &particlesIndices);
-
-    void extrapolateVelocities();
-
     int roundValue(int i, int i1, double d);
-
-    void deleteUnnecessaryParticles();
 
     double getAlpha();
 
+    void kernel2D_calcNegativeDivergence(int h, int w, SpaceType *_spaceTypes, double *_rhs, double *_vx, double *_vy);
+
+    void kernel2D_fillPressureMatrix(int h, int w, SpaceType *_spaceTypes, double *_press_diag, double *_pressX,
+                                     double *_pressY);
+
+    void kernel2D_updateVelocities(int h, int w, SpaceType *_spaceTypes, double *_pressure, double *_vx, double *_vy);
+
+    void kernel2D_dirichleCondition(int h, int w, SpaceType *spaceTypes, double *_pressure, double *_vx, double *_vy);
+
+    void kernel1D_clearSpaceTypes(int s, SpaceType *spaceTypes);
+
+    void kernel2D_createSolid(int h, int w, SpaceType *_spaceTypes);
+
+    void kernel2D_meanVelocities(int h, int w, GridPICInfo *_gridInfo, double *_vx, double *_vy);
+
+    void kernel1D_createFluidFromParticles(int s, Particle *_particles, SpaceType *_spaceTypes);
+
+    void kernel1D_particlesToGridVelocity(int s, Particle *_particles, GridPICInfo *_gridInfo);
+
+    void
+    kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy, double *_diff_vx,
+                         double *_diff_vy);
 };
 
 

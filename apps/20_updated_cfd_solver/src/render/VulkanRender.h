@@ -2,8 +2,16 @@
 #define TEST_VULKANRENDER_H
 
 
-class VulkanRender {
+#include <string>
+#include <vector>
+#include "IRenderer.h"
+#include "SimpleRenderer.h"
 
+class VulkanRender: IRenderer {
+    void saveImage(const std::string &image_name, std::vector<SpaceType> &spaceTypes,
+                   std::vector<Particle>, RenderMode mode) override;
+
+    
 };
 
 

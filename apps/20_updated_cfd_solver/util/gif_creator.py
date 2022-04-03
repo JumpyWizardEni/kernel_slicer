@@ -1,7 +1,7 @@
 import os
 import imageio
 
-FILES_NUM = 200
+FILES_NUM = 1000
 
 #TODO почему-то не работала сортировка с разным числом файлов, надо доделать
 def create_gif(dir):

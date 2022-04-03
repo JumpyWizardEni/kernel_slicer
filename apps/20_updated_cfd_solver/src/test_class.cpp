@@ -1,9 +1,9 @@
 #include "test_class.h"
 #include <cmath>
-#include <vector>
+#include <../../TINYSTL/vector>
 #include <algorithm>
 #include <iostream>
-#include <map>
+#include <cstring>
 
 using std::vector;
 
@@ -29,17 +29,6 @@ void Solver::setParameters() {
     prev_vy.resize(size * (size + 1), 0);
 }
 
-int Solver::cutValue(double from, double to, double value) {
-    if (value > to) {
-        value = to;
-    }
-    if (value < from) {
-        value = from;
-    }
-    return (int) std::round(value);
-}
-
-
 int Solver::roundValue(int from, int to, double value) {
     if (value > to) {
         value = to;
@@ -64,33 +53,110 @@ double Solver::getVelocityY(double *vy, int i, int j) {
 
 }
 
-double Solver::randfrom1(double min, double max) {
-    double range = (max - min);
-    double div = RAND_MAX / range;
-    return min + (rand() / div);
-}
-
-void Solver::performStep() {
+void Solver::performStep(double *output) {
     resetParams();
-    assembleGridFromParticles();
+
+    //Создаем MAC сетку по частицам
+    kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
+    kernel1D_createFluidFromParticles(particles_size, particles.data(), spaceTypes.data());
+    kernel2D_createSolid(size, size, spaceTypes.data());
+
+    //Переносим скорости
+    fillWithZeros(vx.data(), size * (size + 1));
+    fillWithZeros(vy.data(), size * (size + 1));
+    kernel1D_particlesToGridVelocity(particles_size, particles.data(), gridInfo.data());
+    kernel2D_meanVelocities(0, 0, nullptr, nullptr, nullptr);
+
+    //Считаем новый dt
     countTimeDelta(vx.data(), vy.data());
-    prev_vx = vx;
-    prev_vy = vy;
-    addForces(vy.data(), g);
-    dirichleCondition();
-//    extrapolateVelocities();
-    project();
-    checkDivergence();
-    dirichleCondition();
-    advectParticles();
-    createSpaceTypes();
-//    int c = 0;
-//    for (auto &p: particles) {
-//        if (floorValue(1, size - 2, p.pos_x / dx) == 1 && roundValue(1, size - 2, p.pos_y / dx) == size - 2) {
-//            c++;
+
+    //Сохраняем старые значения скоростей
+    memcpy(prev_vx.data(), vx.data(), sizeof(double) * size * (size + 1));
+    memcpy(prev_vy.data(), vy.data(), sizeof(double) * size * (size + 1));
+
+    //Добавляем силу притяжиния
+    kernel2D_addForces(size, size - 1, vy.data(), g, spaceTypes.data());
+
+    //Зануляем скорости на границах
+    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+
+//project
+    //Считаем вектор производных скоростей
+    kernel2D_calcNegativeDivergence(size, size, spaceTypes.data(), rhs.data(), vx.data(), vy.data());
+    //Заполняем матрицу коэффициентов
+    kernel2D_fillPressureMatrix(size, size, spaceTypes.data(), press_diag.data(), pressX.data(), pressY.data());
+    //Основной алгоритм
+
+//    fillWithValue(pressure.data(), size * size);
+
+//    bool isEnd = true;
+//    for (int i = 0; i < size * size; ++i) {
+//        if (std::abs(rhs[i]) > TOL) {
+//            isEnd = false;
+//            break;
 //        }
 //    }
-//    std::cout << "c: " << c << std::endl;
+//
+//    if (isEnd) {
+//        return;
+//    }
+
+//    pressureResidual = rhs;
+
+//    calcPreconditioner();
+
+//    applyPreconditioner();
+
+//    s = z;
+
+//    double sygma = dotProduct(z.data(), pressureResidual.data());
+//    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
+
+
+//        applyPressureMatrix();
+//        double alpha = sygma / dotProduct(z.data(), s.data());
+
+//        int endFlag = 1;
+
+//        for (int j = 0; j < size * size; ++j) {
+//            pressure[j] += alpha * s[j];
+//            pressureResidual[j] -= alpha * z[j];
+//            if (std::abs(pressureResidual[j]) > TOL) {
+//                endFlag = 0;
+//            }
+//        }
+
+    //Вектор давлений найден
+//        if (endFlag) {
+//            return;
+//        }
+//
+//        applyPreconditioner();
+//
+//        double sygma_new = dotProduct(z.data(), pressureResidual.data());
+//
+//        double beta = sygma_new / sygma;
+//
+//        for (int j = 0; j < size * size; ++j) {
+//            s[j] = z[j] + beta * s[j];
+//        }
+//
+//        sygma = sygma_new;
+//    }
+
+//    //Обновить скорости с помощью давлений
+//    kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+//    //Снова зануляем во избежании ошибок
+//    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+//
+//    // перенос частиц
+//    kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
+//                         diff_vy.data());
+//
+//    kernel1D_advectParticles(particles_size, particles.data(), diff_vx.data(), diff_vy.data(), spaceTypes.data());
+//    int copy_size = sizeof(float) * size * size;
+//    memcpy((float *)output, (float *)pressure.data(), copy_size);
+//    checkDivergence();
 }
 
 
@@ -110,10 +176,10 @@ void Solver::countTimeDelta(const double *p_vx, const double *p_vy) {
 }
 
 //Добавляем силу тяжести
-void Solver::addForces(double *v, double a) {
-    for (int j = 1; j < size; ++j) {
-        for (int i = 1; i < size - 1; ++i) {
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+void Solver::kernel2D_addForces(int h, int w, double *v, double a, SpaceType *_spaceTypes) {
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            if (_spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
                 v[getIdxY(i, j)] += dt * a;
             }
         }
@@ -157,75 +223,63 @@ double Solver::interpolate(double q, double *q_copy, double x, double y, int i, 
     return q;
 }
 
-
-//solve
-void Solver::project() {
-    //calc rhs for Ap = rhs
-    calcNegativeDivergence();
-    //set A
-    fillPressureMatrix();
-    //solve Ap = rhs
-    PCG();
-    //Compute new velocities
-    updateVelocities();
-
-};
-
-void Solver::calcNegativeDivergence() {
+void
+Solver::kernel2D_calcNegativeDivergence(int h, int w, SpaceType *_spaceTypes, double *_rhs, double *_vx, double *_vy) {
 
     double scale = 1 / dx;
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
-                rhs[getIdx(i, j)] =
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            if (_spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+                _rhs[getIdx(i, j)] =
                         -scale *
-                        (vx[getIdxX(i + 1, j)] - vx[getIdxX(i, j)] + vy[getIdxY(i, j + 1)] - vy[getIdxY(i, j)]);
-                if (spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid) {
-                    rhs[getIdx(i, j)] -= scale * vx[getIdxX(i, j)];
+                        (_vx[getIdxX(i + 1, j)] - _vx[getIdxX(i, j)] + _vy[getIdxY(i, j + 1)] - _vy[getIdxY(i, j)]);
+                if (_spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid) {
+                    _rhs[getIdx(i, j)] -= scale * _vx[getIdxX(i, j)];
                 }
-                if (spaceTypes[getIdx(i + 1, j)] == SpaceType::Solid) {
-                    rhs[getIdx(i, j)] += scale * vx[getIdxX(i + 1, j)];
+                if (_spaceTypes[getIdx(i + 1, j)] == SpaceType::Solid) {
+                    _rhs[getIdx(i, j)] += scale * _vx[getIdxX(i + 1, j)];
                 }
-                if (spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid) {
-                    rhs[getIdx(i, j)] -= scale * vy[getIdxY(i, j)];
+                if (_spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid) {
+                    _rhs[getIdx(i, j)] -= scale * _vy[getIdxY(i, j)];
                 }
-                if (spaceTypes[getIdx(i, j + 1)] == SpaceType::Solid) {
-                    rhs[getIdx(i, j)] += scale * vy[getIdxY(i, j + 1)];
+                if (_spaceTypes[getIdx(i, j + 1)] == SpaceType::Solid) {
+                    _rhs[getIdx(i, j)] += scale * _vy[getIdxY(i, j + 1)];
                 }
             }
         }
     }
 }
 
-void Solver::fillPressureMatrix() {
+void Solver::kernel2D_fillPressureMatrix(int h, int w, SpaceType *_spaceTypes, double *_press_diag, double *_pressX,
+                                         double *_pressY) {
     double scale = dt / (density * dx * dx);
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            if (_spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
                 if (i != 0) {
-                    if (spaceTypes[getIdx(i - 1, j)] != SpaceType::Solid) {
-                        press_diag[getIdx(i, j)] += scale;
+                    if (_spaceTypes[getIdx(i - 1, j)] != SpaceType::Solid) {
+                        _press_diag[getIdx(i, j)] += scale;
                     }
                 }
                 if (i != size - 1) {
-                    if (spaceTypes[getIdx(i + 1, j)] == SpaceType::Fluid) {
-                        press_diag[getIdx(i, j)] += scale;
-                        pressX[getIdx(i, j)] = -scale;
-                    } else if (spaceTypes[getIdx(i + 1, j)] == SpaceType::Empty) {
-                        press_diag[getIdx(i, j)] += scale;
+                    if (_spaceTypes[getIdx(i + 1, j)] == SpaceType::Fluid) {
+                        _press_diag[getIdx(i, j)] += scale;
+                        _pressX[getIdx(i, j)] = -scale;
+                    } else if (_spaceTypes[getIdx(i + 1, j)] == SpaceType::Empty) {
+                        _press_diag[getIdx(i, j)] += scale;
                     }
                 }
                 if (j != size - 1) {
-                    if (spaceTypes[getIdx(i, j - 1)] != SpaceType::Solid) {
-                        press_diag[getIdx(i, j)] += scale;
+                    if (_spaceTypes[getIdx(i, j - 1)] != SpaceType::Solid) {
+                        _press_diag[getIdx(i, j)] += scale;
                     }
                 }
                 if (j != 0) {
-                    if (spaceTypes[getIdx(i, j + 1)] == SpaceType::Fluid) {
-                        press_diag[getIdx(i, j)] += scale;
-                        pressY[getIdx(i, j)] = -scale;
-                    } else if (spaceTypes[getIdx(i, j + 1)] == SpaceType::Empty) {
-                        press_diag[getIdx(i, j)] += scale;
+                    if (_spaceTypes[getIdx(i, j + 1)] == SpaceType::Fluid) {
+                        _press_diag[getIdx(i, j)] += scale;
+                        _pressY[getIdx(i, j)] = -scale;
+                    } else if (_spaceTypes[getIdx(i, j + 1)] == SpaceType::Empty) {
+                        _press_diag[getIdx(i, j)] += scale;
                     }
                 }
             }
@@ -257,94 +311,51 @@ void Solver::calcPreconditioner() {
     }
 }
 
-//Preconditioned conjugate gradient algorithm
-void Solver::PCG() {
-    for (int i = 0; i < size * size; ++i) {
-        pressure[i] = 0;
-    }
-
-    bool isEnd = true;
-    for (int i = 0; i < size * size; ++i) {
-        if (std::abs(rhs[i]) > TOL) {
-            isEnd = false;
-            break;
-        }
-    }
-
-    if (isEnd) {
-        return;
-    }
-
-    pressureResidual = rhs;
-
-    calcPreconditioner();
-
-    applyPreconditioner();
-
-    s = z;
-
-    double sygma = dotProduct(z.data(), pressureResidual.data());
-    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
-        applyPressureMatrix();
-
-        double alpha = sygma / dotProduct(z.data(), s.data());
-
-        int endFlag = 1;
-
-        for (int j = 0; j < size * size; ++j) {
-            pressure[j] += alpha * s[j];
-            pressureResidual[j] -= alpha * z[j];
-            if (std::abs(pressureResidual[j]) > TOL) {
-                endFlag = 0;
-            }
-        }
-//        printMaxMin(pressureResidual);
-
-        //Вектор давлений найден
-        if (endFlag) {
-            return;
-        }
-
-        applyPreconditioner();
-
-        double sygma_new = dotProduct(z.data(), pressureResidual.data());
-
-        double beta = sygma_new / sygma;
-
-        for (int j = 0; j < size * size; ++j) {
-            s[j] = z[j] + beta * s[j];
-        }
-
-        sygma = sygma_new;
-    }
-}
-
 void Solver::applyPreconditioner() {
-
-    for (int j = 1; j < size - 1; ++j) {
-        for (int i = 1; i < size - 1; ++i) {
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
-                double t = pressureResidual[getIdx(i, j)]
-                           - pressX[getIdx(i - 1, j)]
-                             * preconditioner[getIdx(i - 1, j)] * q[getIdx(i - 1, j)]
-                           - pressY[getIdx(i, j - 1)]
-                             * preconditioner[getIdx(i, j - 1)] * q[getIdx(i, j - 1)];
-
-                q[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+    int overlap = 2;
+    int sub_domains = 5;
+    int subgrid_size = size / sub_domains;
+    //10
+//#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
+//    for (int k = 0; k < sub_domains * sub_domains; k++) {
+//        int k_x = k % sub_domains;
+//        int k_y = k / sub_domains;
+//        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
+//            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+            if (i >= 0 && j >= 0 && i < size && j < size) {
+                if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+                    double t = pressureResidual[getIdx(i, j)]
+                               - pressX[getIdx(i - 1, j)]
+                                 * preconditioner[getIdx(i - 1, j)] * q[getIdx(i - 1, j)]
+                               - pressY[getIdx(i, j - 1)]
+                                 * preconditioner[getIdx(i, j - 1)] * q[getIdx(i, j - 1)];
+                    q[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+                }
             }
+//            }
         }
     }
-    for (int j = size - 2; j >= 1; --j) {
-        for (int i = size - 2; i >= 1; --i) {
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
-                double t = q[getIdx(i, j)]
-                           - pressX[getIdx(i, j)]
-                             * preconditioner[getIdx(i, j)] * z[getIdx(i + 1, j)]
-                           - pressY[getIdx(i, j)]
-                             * preconditioner[getIdx(i, j)] * z[getIdx(i, j + 1)];
-
-                z[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+//#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
+//    for (int k = 0; k < sub_domains * sub_domains; k++) {
+//        int k_x = k % sub_domains;
+//        int k_y = k / sub_domains;
+//        for (int j = (k_y + 1) * subgrid_size + overlap - 1; j >= k_y * subgrid_size - overlap; --j) {
+//            for (int i = (k_x + 1) * subgrid_size + overlap - 1; i >= (k_x) * subgrid_size - overlap; --i) {
+    for (int j = size - 1; j >= 0; --j) {
+        for (int i = size - 1; i >= 0; --i) {
+            if (i >= 0 && j >= 0 && i < size && j < size) {
+                if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+                    double t = q[getIdx(i, j)]
+                               - pressX[getIdx(i, j)]
+                                 * preconditioner[getIdx(i, j)] * z[getIdx(i + 1, j)]
+                               - pressY[getIdx(i, j)]
+                                 * preconditioner[getIdx(i, j)] * z[getIdx(i, j + 1)];
+                    z[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+                }
             }
+//            }
         }
     }
 }
@@ -375,58 +386,28 @@ double Solver::dotProduct(double *first, double *second) {
     return sum;
 }
 
-bool Solver::isFluidVelocityX(int i, int j) {
-    return spaceTypes[getIdx(i - 1, j)] == SpaceType::Fluid ||
-           spaceTypes[getIdx(i, j)] == SpaceType::Fluid && !(spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid ||
-                                                             spaceTypes[getIdx(i, j)] == SpaceType::Solid);
-}
-
-bool Solver::isFluidVelocityY(int i, int j) {
-    return spaceTypes[getIdx(i, j - 1)] == SpaceType::Fluid ||
-           spaceTypes[getIdx(i, j)] == SpaceType::Fluid && !(spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid ||
-                                                             spaceTypes[getIdx(i, j)] == SpaceType::Solid);
-}
-
 //Обновляем скорости с помощью вычисленного вектора давлений
-void Solver::updateVelocities() {
-    vector<int> counts = {};
-    counts.resize(size * size, 0);
-    for (int i = 0; i < particles_size; ++i) {
-        int x = cutValue(1, size - 2, particles[i].pos_x / dx);
-        int y = cutValue(1, size - 2, particles[i].pos_y / dx);
-        counts[getIdx(x, y)]++;
-    }
-    for (int j = 1; j < size - 1; ++j) {
-        for (int i = 1; i < size - 1; ++i) {
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
-                int c = counts[getIdx(i, j)];
-                if (c > 8) {
-                    pressure[getIdx(i, j)] += particles_pressure_coef * (c - 8);
-                }
-            }
-        }
-    }
-
+void Solver::kernel2D_updateVelocities(int h, int w, SpaceType *_spaceTypes, double *_pressure, double *_vx, double *_vy) {
     double scale = dt / (density * dx);
     for (int j = 1; j < size - 1; ++j) {
         for (int i = 1; i < size - 1; ++i) {
-            if (spaceTypes[getIdx(i - 1, j)] == SpaceType::Fluid ||
-                spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
-                if (spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid ||
-                    spaceTypes[getIdx(i, j)] == SpaceType::Solid) {
-                    vx[getIdxX(i, j)] = 0;
+            if (_spaceTypes[getIdx(i - 1, j)] == SpaceType::Fluid ||
+                _spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+                if (_spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid ||
+                    _spaceTypes[getIdx(i, j)] == SpaceType::Solid) {
+                    _vx[getIdxX(i, j)] = 0;
                 } else {
-                    vx[getIdxX(i, j)] -= scale * (pressure[getIdx(i, j)] - pressure[getIdx(i - 1, j)]);
+                    _vx[getIdxX(i, j)] -= scale * (_pressure[getIdx(i, j)] - _pressure[getIdx(i - 1, j)]);
                 }
             }
-            if (spaceTypes[getIdx(i, j - 1)] == SpaceType::Fluid ||
-                spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
-                if (spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid ||
-                    spaceTypes[getIdx(i, j)] == SpaceType::Solid) {
-                    vy[getIdxY(i, j)] = 0;
+            if (_spaceTypes[getIdx(i, j - 1)] == SpaceType::Fluid ||
+                _spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
+                if (_spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid ||
+                    _spaceTypes[getIdx(i, j)] == SpaceType::Solid) {
+                    _vy[getIdxY(i, j)] = 0;
 
                 } else {
-                    vy[getIdxY(i, j)] -= scale * (pressure[getIdx(i, j)] - pressure[getIdx(i, j - 1)]);
+                    _vy[getIdxY(i, j)] -= scale * (_pressure[getIdx(i, j)] - _pressure[getIdx(i, j - 1)]);
                 }
             }
 
@@ -466,6 +447,7 @@ void Solver::resetParams() {
     fillWithZeros(this->s.data(), s);
     fillWithZeros(diff_vy.data(), s);
     fillWithZeros(diff_vx.data(), s);
+    fillWithZeros(q.data(), s);
 }
 
 void Solver::checkDivergence() {
@@ -487,66 +469,39 @@ void Solver::checkDivergence() {
     std::cout << "max_div: " << max_div << ", max_i: " << max_i << ", max_j: " << max_j << std::endl;
 }
 
-double roundTo2(double x) {
-    return roundf(x * 100) / 100;
-}
+void
+Solver::kernel2D_dirichleCondition(int h, int w, SpaceType *spaceTypes, double *_pressure, double *_vx, double *_vy) {
 
-void Solver::visualise() {
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            char c = 'F';
-            if (spaceTypes[getIdx(i, j)] == SpaceType::Solid) {
-                c = 'S';
-            } else if (spaceTypes[getIdx(i, j)] == SpaceType::Empty) {
-                c = 'E';
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            if (j < size && i < size && spaceTypes[getIdx(i, j)] != SpaceType::Fluid) {
+                _pressure[getIdx(i, j)] = 0;
             }
-            std::cout << "vx: " << roundTo2(vx[getIdxX(i, j)]) << ",vy: " << roundTo2(vy[getIdxY(i, j)])
-                      << ",pressure: " << roundTo2(pressure[getIdx(i, j)]) << "-" << c << "      ";
-            if (i == size - 1) {
-                std::cout << "\n\n\n" << std::endl;
-            }
-        }
-    }
-}
-
-
-void Solver::dirichleCondition() {
-
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            if (spaceTypes[getIdx(i, j)] != SpaceType::Fluid) {
-                pressure[getIdx(i, j)] = 0;
-            }
-        }
-    }
-
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size + 1; ++i) {
-            if (i > 0) {
-                if (spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid && vx[getIdxX(i, j)] < 0) {
-                    vx[getIdxX(i, j)] = 0;
+            if (j < size) {
+                if (i > 0) {
+                    if (spaceTypes[getIdx(i - 1, j)] == SpaceType::Solid && _vx[getIdxX(i, j)] < 0) {
+                        _vx[getIdxX(i, j)] = 0;
+                    }
+                }
+                if (i < size) {
+                    if (spaceTypes[getIdx(i, j)] == SpaceType::Solid && _vx[getIdxX(i, j)] > 0) {
+                        _vx[getIdxX(i, j)] = 0;
+                    }
                 }
             }
             if (i < size) {
-                if (spaceTypes[getIdx(i, j)] == SpaceType::Solid && vx[getIdxX(i, j)] > 0) {
-                    vx[getIdxX(i, j)] = 0;
+                if (j > 0) {
+                    if (spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid && _vy[getIdxY(i, j)] < 0) {
+                        _vy[getIdxY(i, j)] = 0;
+                    }
+                }
+                if (j < size) {
+                    if (spaceTypes[getIdx(i, j)] == SpaceType::Solid && _vy[getIdxY(i, j)] > 0) {
+                        _vy[getIdxY(i, j)] = 0;
+                    }
                 }
             }
-        }
-    }
 
-    for (int j = 0; j < size + 1; ++j) {
-        for (int i = 0; i < size; ++i) {
-            if (j > 0) {
-                if (spaceTypes[getIdx(i, j - 1)] == SpaceType::Solid && vy[getIdxY(i, j)] < 0) {
-                    vy[getIdxY(i, j)] = 0;
-                }
-            }
-            if (j < size) {
-                if (spaceTypes[getIdx(i, j)] == SpaceType::Solid && vy[getIdxY(i, j)] > 0) {
-                    vy[getIdxY(i, j)] = 0;
-                }
-            }
         }
     }
 }
@@ -556,32 +511,27 @@ void Solver::assembleGridFromParticles() {
     getVelocitiesFromParticles();
 }
 
-void Solver::clearGrid() {
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            spaceTypes[getIdx(i, j)] = SpaceType::Empty;
+void Solver::kernel1D_clearSpaceTypes(int s, SpaceType *spaceTypes) {
+    for (int i = 0; i < s; ++i) {
+        spaceTypes[i] = SpaceType::Empty;
+    }
+}
+
+void Solver::kernel2D_createSolid(int h, int w, SpaceType *_spaceTypes) {
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            if (i == 0 || i == size - 1 || j == 0 || j == size - 1) {
+                _spaceTypes[getIdx(i, j)] = SpaceType::Solid;
+            }
         }
     }
 }
 
-void Solver::createSpaceTypes() {
-    clearGrid();
-    for (int i = 0; i < particles_size; ++i) {
-        int x = roundValue(0, size - 1, particles[i].pos_x / dx);
-        int y = roundValue(0, size - 1, particles[i].pos_y / dx);
-        spaceTypes[getIdx(x, y)] = SpaceType::Fluid;
-    }
-
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            if (i == 0 || i == size - 1 || j == 0 || j == size - 1) {
-                spaceTypes[getIdx(i, j)] = SpaceType::Solid;
-            }
-        }
-    }
-
-    for (auto &i: solid_indices) {
-        spaceTypes[i] = SpaceType::Solid;
+void Solver::kernel1D_createFluidFromParticles(int s, Particle *_particles, SpaceType *_spaceTypes) {
+    for (int i = 0; i < s; ++i) {
+        int x = roundValue(0, size - 1, _particles[i].pos_x / dx);
+        int y = roundValue(0, size - 1, _particles[i].pos_y / dx);
+        _spaceTypes[getIdx(x, y)] = SpaceType::Fluid;
     }
 }
 
@@ -600,61 +550,52 @@ double Solver::h2(double x) {
 };
 
 //kernel function for interpolating particle values
-double Solver::kernelFunc(double x, double y) {
+double Solver::kFunc(double x, double y) {
     return h2(x / dx) * h2(y / dx);
 }
 
-void Solver::getVelocitiesFromParticles() {
-    fillWithZeros(vx.data(), size * (size + 1));
-    fillWithZeros(vy.data(), size * (size + 1));
+void Solver::kernel2D_meanVelocities(int h, int w, GridPICInfo *_gridInfo, double *_vx, double *_vy) {
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            GridPICInfo &info = _gridInfo[getIdx(i, j)];
+            if (info.sum_vx > 0.0001) {
+                _vx[getIdxX(i, j)] = info.sum_vx / info.weight_vx;
+            }
+            if (info.sum_vy > 0.0001) {
+                _vy[getIdxY(i, j)] = info.sum_vy / info.weight_vy;
+            }
 
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            GridPICInfo &info = gridInfo[getIdx(i, j)];
-            info.sum_vx = 0;
-            info.sum_vy = 0;
-            info.weight_vx = 0;
-            info.weight_vy = 0;
         }
     }
+}
 
-    for (int i = 0; i < particles_size; ++i) {
-        Particle &particle = particles[i];
+void Solver::kernel1D_particlesToGridVelocity(int s, Particle *_particles, GridPICInfo *_gridInfo) {
+    for (int i = 0; i < s; ++i) {
+        Particle &particle = _particles[i];
 
         int x = roundValue(1, size - 2, particle.pos_x / dx);
         int y = roundValue(1, size - 2, particle.pos_y / dx);
-        GridPICInfo &info = gridInfo[getIdx(x, y)];
-        double vx_k = kernelFunc(particle.pos_x - (x - 0.5) * dx, particle.pos_y - y * dx);
-        double vy_k = kernelFunc(particle.pos_x - x * dx, particle.pos_y - (y - 0.5) * dx);
+        GridPICInfo &info = _gridInfo[getIdx(x, y)];
+        double vx_k = kFunc(particle.pos_x - (x - 0.5) * dx, particle.pos_y - y * dx);
+        double vy_k = kFunc(particle.pos_x - x * dx, particle.pos_y - (y - 0.5) * dx);
         info.sum_vx += particle.vx * vx_k;
         info.sum_vy += particle.vy * vy_k;
         info.weight_vx += vx_k;
         info.weight_vy += vy_k;
     }
+}
 
+void
+Solver::kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy,
+                             double *_diff_vx,
+                             double *_diff_vy) {
     for (int j = 0; j < size; ++j) {
         for (int i = 0; i < size; ++i) {
-            GridPICInfo &info = gridInfo[getIdx(i, j)];
-            if (info.sum_vx > 0.0001) {
-                vx[getIdxX(i, j)] = info.sum_vx / info.weight_vx;
-            }
-            if (info.sum_vy > 0.0001) {
-                vy[getIdxY(i, j)] = info.sum_vy / info.weight_vy;
-            }
-
+            _diff_vx[getIdx(i, j)] = getVelocityX(_vx, i, j) - getVelocityX(_prev_vx, i, j);
+            _diff_vy[getIdx(i, j)] = getVelocityY(_vy, i, j) - getVelocityY(_prev_vy, i, j);
         }
     }
 }
-
-void Solver::countDiffXY() {
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            diff_vx[getIdx(i, j)] = getVelocityX(vx.data(), i, j) - getVelocityX(prev_vx.data(), i, j);
-            diff_vy[getIdx(i, j)] = getVelocityY(vy.data(), i, j) - getVelocityY(prev_vy.data(), i, j);
-        }
-    }
-}
-
 
 void Solver::advectParticles() {
     countDiffXY();
