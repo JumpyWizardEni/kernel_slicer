@@ -22,6 +22,7 @@ typedef struct SurfaceHitT
 {
   float3 pos;
   float3 norm;
+  float2 uv;
 }SurfaceHit;
 
 struct RectLightSource
@@ -79,15 +80,15 @@ static inline void CoordinateSystem(float3 v1, float3* v2, float3* v3)
 {
   float invLen = 1.0f;
 
-  if (fabs(v1.x) > fabs(v1.y))
+  if (std::abs(v1.x) > std::abs(v1.y))
   {
-    invLen = 1.0f / sqrt(v1.x*v1.x + v1.z*v1.z);
-    (*v2)  = make_float3((-1.0f) * v1.z * invLen, 0.0f, v1.x * invLen);
+    invLen = 1.0f / std::sqrt(v1.x*v1.x + v1.z*v1.z);
+    (*v2)  = float3((-1.0f) * v1.z * invLen, 0.0f, v1.x * invLen);
   }
   else
   {
     invLen = 1.0f / sqrt(v1.y * v1.y + v1.z * v1.z);
-    (*v2)  = make_float3(0.0f, v1.z * invLen, (-1.0f) * v1.y * invLen);
+    (*v2)  = float3(0.0f, v1.z * invLen, (-1.0f) * v1.y * invLen);
   }
 
   (*v3) = cross(v1, (*v2));
@@ -159,34 +160,6 @@ static inline float3 OffsRayPos(const float3 a_hitPos, const float3 a_surfaceNor
 }
 
 
-static inline float3 SphericalDirectionPBRT(const float sintheta, const float costheta, const float phi) 
-{ 
-  return make_float3(sintheta * cos(phi), sintheta * sin(phi), costheta); 
-}
-
-static inline float GGX_Distribution(const float cosThetaNH, const float alpha)
-{
-  const float alpha2  = alpha * alpha;
-  const float NH_sqr  = clamp(cosThetaNH * cosThetaNH, 0.0f, 1.0f);
-  const float den     = NH_sqr * alpha2 + (1.0f - NH_sqr);
-  return alpha2 / fmax((float)(M_PI) * den * den, 1e-6f);
-}
-
-static inline float GGX_GeomShadMask(const float cosThetaN, const float alpha)
-{
-  // Height - Correlated G.
-  //const float tanNV      = sqrt(1.0f - cosThetaN * cosThetaN) / cosThetaN;
-  //const float a          = 1.0f / (alpha * tanNV);
-  //const float lambda     = (-1.0f + sqrt(1.0f + 1.0f / (a*a))) / 2.0f;
-  //const float G          = 1.0f / (1.0f + lambda);
-
-  // Optimized and equal to the commented-out formulas on top.
-  const float cosTheta_sqr = clamp(cosThetaN*cosThetaN, 0.0f, 1.0f);
-  const float tan2         = (1.0f - cosTheta_sqr) / fmax(cosTheta_sqr, 1e-6f);
-  const float GP           = 2.0f / (1.0f + sqrt(1.0f + alpha * alpha * tan2));
-  return GP;
-}
-
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -216,6 +189,11 @@ static inline float PdfAtoW(const float aPdfA, const float aDist, const float aC
   return (aPdfA*aDist*aDist) / std::max(aCosThere, 1e-30f);
 }
 
+static inline float PdfWtoA(const float aPdfW, const float aDist, const float aCosThere)
+{
+  return aPdfW * std::abs(aCosThere) / std::max(aDist*aDist, 1e-30f);
+}
+
 static inline float maxcomp(float3 v) { return std::max(v.x, std::max(v.y, v.z)); }
 
 static inline float misHeuristicPower1(float p) { return std::isfinite(p) ? std::abs(p) : 0.0f; }
@@ -235,7 +213,8 @@ static inline float misWeightHeuristic(float a, float b)
 */
 typedef struct MisDataT
 {
-  float matSamplePdf; ///< previous angle pdf (pdfW) that were used for sampling material. if < 0, then material sample was pure specular  
+  float matSamplePdf; ///< previous angle pdf (pdfW) that were used for sampling material. if < 0, then material sample was pure specular 
+  float cosTheta;     ///< previous dot(matSam.direction, hit.norm)
 } MisData;
 
 static inline bool isSpecular(const MisData* data) { return (data->matSamplePdf < 0.0f); }
@@ -247,5 +226,36 @@ static inline MisData makeInitialMisData()
   return data;
 }
 
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static inline float4x4 perspectiveMatrix(float fovy, float aspect, float zNear, float zFar)
+{
+  const float ymax = zNear * tanf(fovy * 3.14159265358979323846f / 360.0f);
+  const float xmax = ymax * aspect;
+  const float left = -xmax;
+  const float right = +xmax;
+  const float bottom = -ymax;
+  const float top = +ymax;
+  const float temp = 2.0f * zNear;
+  const float temp2 = right - left;
+  const float temp3 = top - bottom;
+  const float temp4 = zFar - zNear;
+  float4x4 res;
+  res.m_col[0] = float4{ temp / temp2, 0.0f, 0.0f, 0.0f };
+  res.m_col[1] = float4{ 0.0f, temp / temp3, 0.0f, 0.0f };
+  res.m_col[2] = float4{ (right + left) / temp2,  (top + bottom) / temp3, (-zFar - zNear) / temp4, -1.0 };
+  res.m_col[3] = float4{ 0.0f, 0.0f, (-temp * zFar) / temp4, 0.0f };
+  return res;
+}
+
+static inline float2 mulRows2x4(const float4 row0, const float4 row1, float2 v)
+{
+  float2 res;
+  res.x = row0.x*v.x + row0.y*v.y + row0.w;
+  res.y = row1.x*v.x + row1.y*v.y + row1.w;
+  return res;
+}
 
 #endif

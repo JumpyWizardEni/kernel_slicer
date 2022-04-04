@@ -4,12 +4,12 @@
 #include <chrono>
 #include <string>
 
-float TestClass::LightPdfSelectRev(int a_lightId) 
+float Integrator::LightPdfSelectRev(int a_lightId) 
 { 
   return 1.0f; 
 }
 
-float TestClass::LightEvalPDF(int a_lightId, float3 illuminationPoint, float3 ray_dir, const SurfaceHit* pSurfaceHit)
+float Integrator::LightEvalPDF(int a_lightId, float3 illuminationPoint, float3 ray_dir, const SurfaceHit* pSurfaceHit)
 {
   const float3 lpos   = pSurfaceHit->pos;
   const float3 lnorm  = pSurfaceHit->norm;
@@ -19,91 +19,176 @@ float TestClass::LightEvalPDF(int a_lightId, float3 illuminationPoint, float3 ra
   return PdfAtoW(pdfA, hitDist, cosVal);
 }
 
-float TestClass::MaterialEvalPDF(int a_materialId, float3 l, float3 v, float3 n) 
-{ 
-  return std::abs(dot(l, n)) * INV_PI; 
-}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void TestClass::PackXY(uint tidX, uint tidY, uint* out_pakedXY)
+BsdfSample Integrator::MaterialSampleAndEval(int a_materialId, float4 rands, float3 v, float3 n, float2 tc)
 {
-  kernel_PackXY(tidX, tidY, out_pakedXY);
-}
+  const float2 texCoordT = mulRows2x4(m_materials[a_materialId].row0[0], m_materials[a_materialId].row1[0], tc);
+  const float3 texColor  = to_float3(m_textures[ m_materials[a_materialId].texId[0] ]->sample(texCoordT));
 
-void TestClass::CastSingleRay(uint tid, const uint* in_pakedXY, uint* out_color)
-{
-  float4 rayPosAndNear, rayDirAndFar;
-  kernel_InitEyeRay(tid, in_pakedXY, &rayPosAndNear, &rayDirAndFar);
-
-  Lite_Hit hit; 
-  float2   baricentrics; 
-  if(!kernel_RayTrace(tid, &rayPosAndNear, &rayDirAndFar, &hit, &baricentrics))
-    return;
+  const uint   type      = m_materials[a_materialId].brdfType;
+  const float3 color     = to_float3(m_materials[a_materialId].baseColor)*texColor;
+  const float3 specular  = to_float3(m_materials[a_materialId].metalColor);
+  const float3 coat      = to_float3(m_materials[a_materialId].coatColor);
+  const float  roughness = 1.0f - m_materials[a_materialId].glosiness;
+  float  alpha           = m_materials[a_materialId].alpha;
   
-  kernel_GetRayColor(tid, &hit, in_pakedXY, out_color);
-}
+  // TODO: read color     from texture
+  // TODO: read roughness from texture
+  // TODO: read alpha     from texture
 
-void TestClass::NaivePathTrace(uint tid, uint a_maxDepth, const uint* in_pakedXY, float4* out_color)
-{
-  float4 accumColor, accumThoroughput;
-  float4 rayPosAndNear, rayDirAndFar;
-  RandomGen gen; 
-  MisData   mis;
-  uint      rayFlags;
-  kernel_InitEyeRay2(tid, in_pakedXY, &rayPosAndNear, &rayDirAndFar, &accumColor, &accumThoroughput, &gen, &rayFlags);
+  // TODO: check if glosiness in 1 (roughness is 0), use special case mirror brdf
+  //if(roughness == 0.0f && type == BRDF_TYPE_GGX)
+  //  type = BRDF_TYPE_MIRROR;
 
-  for(int depth = 0; depth < a_maxDepth; depth++) 
+  BsdfSample res;
+  switch(type)
   {
-    float4   shadeColor, hitPart1, hitPart2;
-    uint32_t materialId;
-    kernel_RayTrace2(tid, &rayPosAndNear, &rayDirAndFar, &hitPart1, &hitPart2, &materialId, &rayFlags);
-    if(rayFlags != 0)
-      break;
+    case BRDF_TYPE_GLTF:
+    case BRDF_TYPE_GGX:
+    case BRDF_TYPE_LAMBERT:
+    default:
+    {
+      const float3 ggxDir = ggxSample(float2(rands.x, rands.y), v, n, roughness);
+      const float  ggxPdf = ggxEvalPDF (ggxDir, v, n, roughness); 
+      const float  ggxVal = ggxEvalBSDF(ggxDir, v, n, roughness);
+      
+      const float3 lambertDir = lambertSample(float2(rands.x, rands.y), v, n);
+      const float  lambertPdf = lambertEvalPDF(lambertDir, v, n);
+      const float  lambertVal = lambertEvalBSDF(lambertDir, v, n);
+
+      const float3 h = normalize(v - ggxDir); // half vector.
     
-    kernel_NextBounce(tid, depth, &hitPart1, &hitPart2, &materialId, &shadeColor,
-                      &rayPosAndNear, &rayDirAndFar, &accumColor, &accumThoroughput, &gen, &mis, &rayFlags);
-    if(rayFlags != 0)
-      break;
+      if(type == BRDF_TYPE_GGX)
+        alpha = 1.0f;
+
+      // (1) select between metal and dielectric via rands.z
+      //
+      float pdfSelect = 1.0f;
+      if(rands.z < alpha) // select metall
+      {
+        pdfSelect *= alpha;
+        const float3 F = gltfConductorFresnel(specular, dot(h,v));
+        res.direction = ggxDir;
+        res.color     = ggxVal*F*alpha;
+        res.pdf       = ggxPdf;
+      }
+      else                // select dielectric
+      {
+        pdfSelect *= 1.0f - alpha;
+        
+        // (2) now select between specular and diffise via rands.w
+        //
+        float fDielectric = gltfFresnelMix2(dot(h,v));
+        if(type == BRDF_TYPE_LAMBERT)
+          fDielectric = 0.0f;
+
+        if(rands.w < fDielectric) // specular
+        {
+          pdfSelect *= fDielectric;
+          res.direction = ggxDir;
+          res.color     = ggxVal*coat*fDielectric*(1.0f - alpha);
+          res.pdf       = ggxPdf;
+        } 
+        else
+        {
+          pdfSelect *= (1.0f-fDielectric); // lambert
+          res.direction = lambertDir;
+          res.color     = lambertVal*color*(1.0f-fDielectric)*(1.0f - alpha);
+          res.pdf       = lambertPdf;
+        }
+      }
+      
+      res.pdf *= pdfSelect;
+      res.flags = RAY_FLAG_HAS_NON_SPEC;
+    }
+    break;
+    case BRDF_TYPE_MIRROR:
+    {
+      res.direction = reflect(v, n);
+      // BSDF is multiplied (outside) by cosThetaOut.
+      // For mirrors this shouldn't be done, so we pre-divide here instead.
+      //
+      const float cosThetaOut = dot(res.direction, n);
+      res.color     = specular*(1.0f/std::max(cosThetaOut, 1e-6f));
+      res.pdf       = 1.0f;
+      res.flags     = 0;
+    }
+    break;
   }
 
-  kernel_ContributeToImage(tid, &accumColor, &gen, in_pakedXY, 
-                           out_color);
+  return res;
 }
 
-void TestClass::PathTrace(uint tid, uint a_maxDepth, const uint* in_pakedXY, float4* out_color)
+BsdfEval Integrator::MaterialEval(int a_materialId, float3 l, float3 v, float3 n, float2 tc)
 {
-  float4 accumColor, accumThoroughput;
-  float4 rayPosAndNear, rayDirAndFar;
-  RandomGen gen; 
-  MisData   mis;
-  uint      rayFlags;
-  kernel_InitEyeRay2(tid, in_pakedXY, &rayPosAndNear, &rayDirAndFar, &accumColor, &accumThoroughput, &gen, &rayFlags);
+  const float2 texCoordT = mulRows2x4(m_materials[a_materialId].row0[0], m_materials[a_materialId].row1[0], tc);
+  const float3 texColor  = to_float3(m_textures[ m_materials[a_materialId].texId[0] ]->sample(texCoordT));
 
-  for(int depth = 0; depth < a_maxDepth; depth++) 
+  const uint type       = m_materials[a_materialId].brdfType;
+  const float3 color    = to_float3(m_materials[a_materialId].baseColor)*texColor;
+  const float3 specular = to_float3(m_materials[a_materialId].metalColor);
+  const float3 coat     = to_float3(m_materials[a_materialId].coatColor);
+  const float roughness = 1.0f - m_materials[a_materialId].glosiness;
+        float  alpha    = m_materials[a_materialId].alpha;
+
+  // TODO: read color     from texture
+  // TODO: read roughness from texture
+  // TODO: read alpha     from texture
+ 
+  // TODO: check if glosiness in 1 (roughness is 0), use special case mirror brdf
+  //if(roughness == 0.0f && type == BRDF_TYPE_GGX)
+  //  type = BRDF_TYPE_MIRROR;
+
+
+  BsdfEval res;
+  switch(type)
   {
-    float4   shadeColor, hitPart1, hitPart2;
-    uint32_t materialId;
-    kernel_RayTrace2(tid, &rayPosAndNear, &rayDirAndFar, &hitPart1, &hitPart2, &materialId, &rayFlags);
-    if(rayFlags != 0)
-      break;
-    
-    kernel_SampleLightSource(tid, &rayPosAndNear, &rayDirAndFar, &hitPart1, &hitPart2, &materialId, 
-                             &gen, &shadeColor);
+    case BRDF_TYPE_GLTF:
+    case BRDF_TYPE_GGX:
+    case BRDF_TYPE_LAMBERT:
+    default:
+    {
+      if(type == BRDF_TYPE_GGX)
+        alpha = 1.0f;
+        
+      const float ggxVal = ggxEvalBSDF(l, v, n, roughness);
+      const float ggxPdf = ggxEvalPDF (l, v, n, roughness);
+      
+      const float lambertVal = lambertEvalBSDF(l, v, n);
+      const float lambertPdf = lambertEvalPDF (l, v, n);
+      
+      const float3 h = normalize(v + l);
+      const float3 F = gltfConductorFresnel(specular, dot(h,v));
 
-    kernel_NextBounce(tid, depth, &hitPart1, &hitPart2, &materialId, &shadeColor,
-                      &rayPosAndNear, &rayDirAndFar, &accumColor, &accumThoroughput, &gen, &mis, &rayFlags);
-    if(rayFlags != 0)
-      break;
+      const float3 specularColor = ggxVal*F;                  // (1) eval metal and (same) specular component
+      float  fDielectric         = gltfFresnelMix2(dot(h,v)); // (2) eval dielectric component
+      if(type == BRDF_TYPE_LAMBERT)
+        fDielectric = 0.0f;
+      const float  dielectricPdf = (1.0f-fDielectric)*lambertPdf       + fDielectric*ggxPdf;
+      const float3 dielectricVal = (1.0f-fDielectric)*lambertVal*color + fDielectric*ggxVal*coat;
+
+      res.color = alpha*specularColor + (1.0f - alpha)*dielectricVal; // (3) accumulate final color and pdf
+      res.pdf   = alpha*ggxPdf        + (1.0f - alpha)*dielectricPdf; // (3) accumulate final color and pdf
+    }
+    break;
+    case BRDF_TYPE_MIRROR:
+    {
+      res.color = float3(0,0,0);
+      res.pdf   = 0.0f;
+    }
+    break;
   }
-
-  kernel_ContributeToImage(tid, &accumColor, &gen, in_pakedXY, 
-                           out_color);
-                           
+  return res;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void TestClass::PackXYBlock(uint tidX, uint tidY, uint* out_pakedXY, uint a_passNum)
+void Integrator::PackXYBlock(uint tidX, uint tidY, uint* out_pakedXY, uint a_passNum)
 {
   #pragma omp parallel for default(shared)
   for(int y=0;y<tidY;y++)
@@ -111,14 +196,14 @@ void TestClass::PackXYBlock(uint tidX, uint tidY, uint* out_pakedXY, uint a_pass
       PackXY(x, y, out_pakedXY);
 }
 
-void TestClass::CastSingleRayBlock(uint tid, const uint* in_pakedXY, uint* out_color, uint a_passNum)
+void Integrator::CastSingleRayBlock(uint tid, const uint* in_pakedXY, uint* out_color, uint a_passNum)
 {
   #pragma omp parallel for default(shared)
   for(uint i=0;i<tid;i++)
     CastSingleRay(i, in_pakedXY, out_color);
 }
 
-void TestClass::NaivePathTraceBlock(uint tid, uint a_maxDepth, const uint* in_pakedXY, float4* out_color, uint a_passNum)
+void Integrator::NaivePathTraceBlock(uint tid, uint a_maxDepth, const uint* in_pakedXY, float4* out_color, uint a_passNum)
 {
   auto start = std::chrono::high_resolution_clock::now();
   #pragma omp parallel for default(shared)
@@ -128,7 +213,7 @@ void TestClass::NaivePathTraceBlock(uint tid, uint a_maxDepth, const uint* in_pa
   naivePtTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count()/1000.f;
 }
 
-void TestClass::PathTraceBlock(uint tid, uint a_maxDepth, const uint* in_pakedXY, float4* out_color, uint a_passNum)
+void Integrator::PathTraceBlock(uint tid, uint a_maxDepth, const uint* in_pakedXY, float4* out_color, uint a_passNum)
 {
   auto start = std::chrono::high_resolution_clock::now();
   #pragma omp parallel for default(shared)
@@ -138,7 +223,7 @@ void TestClass::PathTraceBlock(uint tid, uint a_maxDepth, const uint* in_pakedXY
   shadowPtTime = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start).count()/1000.f;
 }
 
-void TestClass::GetExecutionTime(const char* a_funcName, float a_out[4])
+void Integrator::GetExecutionTime(const char* a_funcName, float a_out[4])
 {
   if(std::string(a_funcName) == "NaivePathTrace" || std::string(a_funcName) == "NaivePathTraceBlock")
     a_out[0] = naivePtTime;

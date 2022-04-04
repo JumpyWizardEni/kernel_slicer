@@ -5,6 +5,9 @@
 #include <memory>
 #include "aligned_alloc.h"
 #include "sampler.h"
+#include "LiteMath.h"
+
+template<typename T> uint32_t GetVulkanFormat(bool a_gamma22);
 
 template<typename Type>
 struct Texture2D
@@ -29,6 +32,9 @@ struct Texture2D
   unsigned int bpp() const    { return sizeof(Type); }
  
   const Type* getRawData() const { return m_data.data(); }
+  unsigned int format()    const { return GetVulkanFormat<Type>(m_srgb); } 
+
+  void setSRGB(bool a_val) { m_srgb = a_val; }
 
 protected:
   float2 process_coord(const Sampler::AddressMode mode, const float2 coord, bool* use_border_color) const;   
@@ -37,7 +43,8 @@ protected:
   unsigned int m_height;
   float m_fw;
   float m_fh;
-  cvex::vector<Type> m_data;  
+  cvex::vector<Type> m_data; 
+  bool m_srgb = false;
 };
 
 /**
@@ -56,8 +63,6 @@ struct ITexture2DCombined
   virtual const void*  getRawData()        const = 0;
 };
 
-template<typename T> uint32_t GetVulkanFormat();
-
 /**
   \brief Can have specific effitient implementations for various textures and samplers
 */
@@ -73,7 +78,7 @@ std::shared_ptr<ITexture2DCombined> MakeCombinedTexture2D(std::shared_ptr<Textur
     unsigned int width()             const override { return m_pTexture->width();  }
     unsigned int height()            const override { return m_pTexture->height(); }
     unsigned int bpp()               const override { return m_pTexture->bpp();    }
-    unsigned int format()            const override { return GetVulkanFormat<Type>();  } 
+    unsigned int format()            const override { return m_pTexture->format();  } 
     Sampler      getSampler()        const override { return m_sampler;                }
     const void*  getRawData()        const override { return m_pTexture->getRawData(); }
 
