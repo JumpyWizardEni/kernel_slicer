@@ -80,7 +80,7 @@ void Configuration::simulate() {
         float t = 0;
         float t_frame = 1.0 / 60;
         while (t < t_frame) {
-            solver->performStep();
+            solver->performStep(0, 0, nullptr, nullptr);
             t += solver->dt;
         }
         renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver->spaceTypes, solver->particles,

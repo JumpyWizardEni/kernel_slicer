@@ -53,7 +53,7 @@ double Solver::getVelocityY(double *vy, int i, int j) {
 
 }
 
-void Solver::performStep(double *output) {
+void Solver::performStep(int w, int h, double *input, double *output) {
     resetParams();
 
     //Создаем MAC сетку по частицам
@@ -71,8 +71,8 @@ void Solver::performStep(double *output) {
     countTimeDelta(vx.data(), vy.data());
 
     //Сохраняем старые значения скоростей
-    memcpy(prev_vx.data(), vx.data(), sizeof(double) * size * (size + 1));
-    memcpy(prev_vy.data(), vy.data(), sizeof(double) * size * (size + 1));
+
+    memcpy(vx2.data(), vy2.data(), sizeof(float) * size * (size + 1));
 
     //Добавляем силу притяжиния
     kernel2D_addForces(size, size - 1, vy.data(), g, spaceTypes.data());
@@ -154,7 +154,7 @@ void Solver::performStep(double *output) {
 
 //    kernel1D_advectParticles(particles_size, particles.data(), diff_vx.data(), diff_vy.data(), spaceTypes.data());
     int copy_size = sizeof(float) * size * size;
-    memcpy((float *)output, (float *)pressure.data(), copy_size);
+//    memcpy((float *)output, (float *)pressure.data(), copy_size);
     checkDivergence();
 }
 

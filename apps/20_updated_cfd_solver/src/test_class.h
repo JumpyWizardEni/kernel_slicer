@@ -9,10 +9,6 @@ enum class SpaceType {
     Fluid, Solid, Empty
 };
 
-class Velocity {
-
-};
-
 struct Particle {
     double vx = 0.0;
     double vy = 0.0;
@@ -69,6 +65,9 @@ public:
     vector<double> diff_vx;
     vector<double> diff_vy;
 
+    vector<float> vx2;
+    vector<float> vy2;
+
     vector<int> mask;
 
     Solver();
@@ -78,7 +77,7 @@ public:
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
 
-    virtual void performStep(double *output);
+    virtual void performStep(int w, int h, double *input __attribute__((size("w", "h"))), double *output __attribute__((size("w", "h"))));
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
     void countTimeDelta(const double *vx, const double *vy);
