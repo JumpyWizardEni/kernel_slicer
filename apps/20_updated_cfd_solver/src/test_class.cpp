@@ -37,7 +37,7 @@ int Solver::roundValue(int from, int to, double value) {
         value = from;
     }
 
-    return (int) std::round(value);
+    return (int) this->round(value);
 }
 
 double Solver::getVelocityX(double *vx, int i, int j) {
@@ -87,76 +87,75 @@ void Solver::performStep(double *output) {
     kernel2D_fillPressureMatrix(size, size, spaceTypes.data(), press_diag.data(), pressX.data(), pressY.data());
     //Основной алгоритм
 
-//    fillWithValue(pressure.data(), size * size);
+    fillWithZeros(pressure.data(), size * size);
 
-//    bool isEnd = true;
-//    for (int i = 0; i < size * size; ++i) {
-//        if (std::abs(rhs[i]) > TOL) {
-//            isEnd = false;
-//            break;
-//        }
-//    }
-//
-//    if (isEnd) {
-//        return;
-//    }
+    bool isEnd = true;
+    for (int i = 0; i < size * size; ++i) {
+        if (std::abs(rhs[i]) > TOL) {
+            isEnd = false;
+            break;
+        }
+    }
 
-//    pressureResidual = rhs;
+    if (isEnd) {
+        return;
+    }
 
-//    calcPreconditioner();
+    pressureResidual = rhs;
 
-//    applyPreconditioner();
+    calcPreconditioner();
 
-//    s = z;
+    applyPreconditioner();
 
-//    double sygma = dotProduct(z.data(), pressureResidual.data());
-//    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
+    s = z;
+
+    double sygma = dotProduct(z.data(), pressureResidual.data());
+    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
 
 
-//        applyPressureMatrix();
-//        double alpha = sygma / dotProduct(z.data(), s.data());
+        applyPressureMatrix();
+        double alpha = sygma / dotProduct(z.data(), s.data());
 
-//        int endFlag = 1;
+        int endFlag = 1;
 
-//        for (int j = 0; j < size * size; ++j) {
-//            pressure[j] += alpha * s[j];
-//            pressureResidual[j] -= alpha * z[j];
-//            if (std::abs(pressureResidual[j]) > TOL) {
-//                endFlag = 0;
-//            }
-//        }
+        for (int j = 0; j < size * size; ++j) {
+            pressure[j] += alpha * s[j];
+            pressureResidual[j] -= alpha * z[j];
+            if (std::abs(pressureResidual[j]) > TOL) {
+                endFlag = 0;
+            }
+        }
 
-    //Вектор давлений найден
-//        if (endFlag) {
-//            return;
-//        }
-//
-//        applyPreconditioner();
-//
-//        double sygma_new = dotProduct(z.data(), pressureResidual.data());
-//
-//        double beta = sygma_new / sygma;
-//
-//        for (int j = 0; j < size * size; ++j) {
-//            s[j] = z[j] + beta * s[j];
-//        }
-//
-//        sygma = sygma_new;
-//    }
+        if (endFlag) {
+            return;
+        }
 
-//    //Обновить скорости с помощью давлений
-//    kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-//    //Снова зануляем во избежании ошибок
-//    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-//
-//    // перенос частиц
-//    kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
-//                         diff_vy.data());
-//
+        applyPreconditioner();
+
+        double sygma_new = dotProduct(z.data(), pressureResidual.data());
+
+        double beta = sygma_new / sygma;
+
+        for (int j = 0; j < size * size; ++j) {
+            s[j] = z[j] + beta * s[j];
+        }
+
+        sygma = sygma_new;
+    }
+
+    //Обновить скорости с помощью давлений
+    kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+    //Снова зануляем во избежании ошибок
+    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+
+    // перенос частиц
+    kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
+                         diff_vy.data());
+
 //    kernel1D_advectParticles(particles_size, particles.data(), diff_vx.data(), diff_vy.data(), spaceTypes.data());
-//    int copy_size = sizeof(float) * size * size;
-//    memcpy((float *)output, (float *)pressure.data(), copy_size);
-//    checkDivergence();
+    int copy_size = sizeof(float) * size * size;
+    memcpy((float *)output, (float *)pressure.data(), copy_size);
+    checkDivergence();
 }
 
 
@@ -296,12 +295,12 @@ void Solver::calcPreconditioner() {
         for (int i = 1; i < size - 1; ++i) {
             if (spaceTypes[getIdx(i, j)] == SpaceType::Fluid) {
                 double e = press_diag[getIdx(i, j)]
-                           - std::pow(pressX[getIdx(i - 1, j)] * preconditioner[getIdx(i - 1, j)], 2)
-                           - std::pow(pressY[getIdx(i, j - 1)] * preconditioner[getIdx(i, j - 1)], 2)
+                           - pow(pressX[getIdx(i - 1, j)] * preconditioner[getIdx(i - 1, j)])
+                           - pow(pressY[getIdx(i, j - 1)] * preconditioner[getIdx(i, j - 1)])
                            - tau * (pressX[getIdx(i - 1, j)] * pressY[getIdx(i - 1, j)] *
-                                    std::pow(preconditioner[getIdx(i - 1, j)], 2)
+                                    pow(preconditioner[getIdx(i - 1, j)])
                                     + pressY[getIdx(i, j - 1)] * pressX[getIdx(i, j - 1)] *
-                                      std::pow(preconditioner[getIdx(i, j - 1)], 2));
+                                      pow(preconditioner[getIdx(i, j - 1)]));
                 if (e < safe * press_diag[getIdx(i, j)]) {
                     e = press_diag[getIdx(i, j)];
                 }
@@ -506,6 +505,10 @@ Solver::kernel2D_dirichleCondition(int h, int w, SpaceType *spaceTypes, double *
     }
 }
 
+double Solver::pow(double value) {
+    return value * value;
+}
+
 void Solver::assembleGridFromParticles() {
     createSpaceTypes();
     getVelocitiesFromParticles();
@@ -538,13 +541,13 @@ void Solver::kernel1D_createFluidFromParticles(int s, Particle *_particles, Spac
 double Solver::h2(double x) {
 
     if (x >= -1.5 && x < -0.5) {
-        return 0.5 * pow(x + 1.5, 2);
+        return 0.5 * pow(x + 1.5);
     }
     if (x >= -0.5 && x < 0.5) {
         return 0.75 - x * x;
     }
     if (x >= 0.5 && x < 1.5) {
-        return 0.5 * pow(1.5 - x, 2);
+        return 0.5 * pow(1.5 - x);
     }
     return 0;
 };
@@ -678,6 +681,14 @@ double Solver::getAlpha() {
     }
     std::cout << res << std::endl;
     return res;
+}
+
+int Solver::round(double d) {
+    int f = floor(d);
+    if (d - f > 0.5) {
+        return ceil(d);
+    }
+    return f;
 }
 
 

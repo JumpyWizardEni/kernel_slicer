@@ -75,7 +75,10 @@ public:
 
     void setParameters();
 
-    void performStep(double *output);
+    virtual void CommitDeviceData() {}                                       // will be overriden in generated class
+    virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
+
+    virtual void performStep(double *output);
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
     void countTimeDelta(const double *vx, const double *vy);
@@ -114,6 +117,8 @@ public:
 
     //TODO test
     void updateVelocities();
+
+    double pow(double value);
 
     //TODO test
     void applyPressureMatrix();
@@ -177,6 +182,8 @@ public:
     void
     kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy, double *_diff_vx,
                          double *_diff_vy);
+
+    int round(double d);
 };
 
 
