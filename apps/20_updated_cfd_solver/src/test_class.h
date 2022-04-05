@@ -67,11 +67,6 @@ public:
     vector<double> diff_vx;
     vector<double> diff_vy;
 
-    vector<float> vx2;
-    vector<float> vy2;
-
-    vector<int> mask;
-
     vector<int> solid_indices;
 
     Solver();
@@ -87,44 +82,26 @@ public:
     void countTimeDelta(const double *vx, const double *vy);
 
 
-    //TODO test
     double
     interpolate(double q, double *q_copy, double x, double y, int i,
                 int j); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
 
-    void project();
-
-    void calcNegativeDivergence();
-
-
-    void fillPressureMatrix();
-
     void kernel2D_addForces(int h, int w, double *v, double a, int *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
 
-    //TODO test
     void applyPreconditioner();
 
-    //TODO test
     void calcPreconditioner();
 
-    //TODO test
     double getVelocityX(double *vx, int i, int j);
 
-    //TODO test
     double getVelocityY(double *vy, int i, int j);
 
-    //TODO test
-    int cutValue(double from, double to, double value);
-
-    double dotProduct(double *first, double *second);
-
-    //TODO test
-    void updateVelocities();
+    void kernel1D_dotProduct(int size, double *first, double *second, double *result);
 
     double pow(double value);
 
-    //TODO test
-    void applyPressureMatrix();
+    void kernel2D_applyPressureMatrix(int h, int w, int *spaceTypes, double *s, double *pressX, double *pressY, double *z,
+                                      double *press_diag);
 
     // Все формулы записаны в стандартных кооридинатах, однако при индексации ось Y направлена вниз
     int getIdx(int i, int j);
@@ -143,11 +120,15 @@ public:
 
     double h2(double x);
 
-    void advectParticles();
+
 
     int roundValue(int i, int i1, double d);
 
     double getAlpha();
+
+    void
+    kernel1D_advectParticles(int particles_size, Particle *_particles, double *_diff_vx, double *_diff_vy,
+                             double *_vx, double *_vy, int *_spaceTypes);
 
     void kernel2D_calcNegativeDivergence(int h, int w, int *_spaceTypes, double *_rhs, double *_vx, double *_vy);
 
@@ -171,6 +152,8 @@ public:
     void
     kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy, double *_diff_vx,
                          double *_diff_vy);
+
+    void kernel1D_createAdditionalSolid(int size, int *indices, int *_spaceTypes);
 };
 
 
