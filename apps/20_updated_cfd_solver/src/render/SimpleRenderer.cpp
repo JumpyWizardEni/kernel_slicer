@@ -11,7 +11,7 @@ SimpleRenderer::SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size) 
     dx = ((double)grid_size)/_grid_num;
 }
 
-void SimpleRenderer::saveImage(const std::string &image_name, std::vector<SpaceType> &spaceTypes,
+void SimpleRenderer::saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
                                std::vector<Particle> particles, RenderMode mode) {
     std::vector<unsigned char> image;
     image.resize(grid_num * grid_num * 4 * grid_px_size * grid_px_size, 0);
@@ -29,12 +29,12 @@ void SimpleRenderer::saveImage(const std::string &image_name, std::vector<SpaceT
                    grid_num * grid_px_size, 4, &image[0], 100);
 }
 
-void SimpleRenderer::fillEmptyImage(vector<unsigned char> &image, std::vector<SpaceType> &spaceTypes) const {
+void SimpleRenderer::fillEmptyImage(vector<unsigned char> &image, std::vector<int> &spaceTypes) const {
     const Color solidColor = Color(121, 134, 133);
     const Color emptyColor = Color(255, 255, 255);
 
     for (int i = 0; i < grid_num * grid_num; ++i) {
-        if (spaceTypes[i] == SpaceType::Solid) {
+        if (spaceTypes[i] == Solid) {
             drawSquare(solidColor, i, image);
         } else {
             drawSquare(emptyColor, i, image);
@@ -241,16 +241,16 @@ SimpleRenderer::getIndices(vector<Particle> &particles, int particle_idx, float 
     return res;
 }
 
-void SimpleRenderer::fillSquareImage(vector<unsigned char> &image, vector<SpaceType> &spaceTypes,
+void SimpleRenderer::fillSquareImage(vector<unsigned char> &image, vector<int> &spaceTypes,
                                      vector<Particle> &particles) const {
     const Color solidColor = Color(121, 134, 133);
     const Color emptyColor = Color(255, 255, 255);
     const Color fluidColor = Color(15, 94, 156);
 
     for (int i = 0; i < grid_num * grid_num; ++i) {
-        if (spaceTypes[i] == SpaceType::Solid) {
+        if (spaceTypes[i] == Solid) {
             drawSquare(solidColor, i, image);
-        } else if (spaceTypes[i] == SpaceType::Empty) {
+        } else if (spaceTypes[i] == Empty) {
             drawSquare(emptyColor, i, image);
         } else {
             drawSquare(fluidColor, i, image);

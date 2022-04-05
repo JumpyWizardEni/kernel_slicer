@@ -1,13 +1,10 @@
 #ifndef TEST_TEST_CLASS_H
 #define TEST_TEST_CLASS_H
 
-#include <../../TINYSTL/vector>
+#include <vector>
 
 using std::vector;
 
-enum class SpaceType {
-    Fluid, Solid, Empty
-};
 
 struct Particle {
     double vx = 0.0;
@@ -29,6 +26,11 @@ struct GridPICInfo {
 class Solver {
 
 public:
+
+    const int Solid = 0;
+    const int Empty = 1;
+    const int Fluid = 2;
+
     int size = 0; // Количество ячеек по одному направлению
     int particles_size = 0;
     vector<Particle> particles;
@@ -40,7 +42,7 @@ public:
     const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
     const double TOL = 1e-9; // epsilon для давления
     double viscosity = 0.0001;
-    int particles_pressure_coef = 30;
+    int particles_pressure_coef = 10;
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
     vector<double> pressure;
@@ -57,7 +59,7 @@ public:
     vector<double> prev_vx;
     vector<double> prev_vy;
 
-    vector<SpaceType> spaceTypes;
+    vector<int> spaceTypes;
 
     vector<double> vx; // (size + 1), size
     vector<double> vy; // size, (size + 1)
@@ -69,6 +71,8 @@ public:
     vector<float> vy2;
 
     vector<int> mask;
+
+    vector<int> solid_indices;
 
     Solver();
 
@@ -95,7 +99,7 @@ public:
 
     void fillPressureMatrix();
 
-    void kernel2D_addForces(int h, int w, double *v, double a, SpaceType *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
+    void kernel2D_addForces(int h, int w, double *v, double a, int *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
 
     //TODO test
     void applyPreconditioner();
@@ -133,19 +137,7 @@ public:
 
     void checkDivergence();
 
-    void dirichleCondition();
-
     void fillWithZeros(double *v, int size);
-
-    void checkAdvected(double *q, double *prev_q, double *vx, double *vy);
-
-    void assembleGridFromParticles();
-
-    void clearGrid();
-
-    void createSpaceTypes();
-
-    void getVelocitiesFromParticles();
 
     double kFunc(double x, double y);
 
@@ -153,36 +145,32 @@ public:
 
     void advectParticles();
 
-    void countDiffXY();
-
     int roundValue(int i, int i1, double d);
 
     double getAlpha();
 
-    void kernel2D_calcNegativeDivergence(int h, int w, SpaceType *_spaceTypes, double *_rhs, double *_vx, double *_vy);
+    void kernel2D_calcNegativeDivergence(int h, int w, int *_spaceTypes, double *_rhs, double *_vx, double *_vy);
 
-    void kernel2D_fillPressureMatrix(int h, int w, SpaceType *_spaceTypes, double *_press_diag, double *_pressX,
+    void kernel2D_fillPressureMatrix(int h, int w, int *_spaceTypes, double *_press_diag, double *_pressX,
                                      double *_pressY);
 
-    void kernel2D_updateVelocities(int h, int w, SpaceType *_spaceTypes, double *_pressure, double *_vx, double *_vy);
+    void kernel2D_updateVelocities(int h, int w, int *_spaceTypes, double *_pressure, double *_vx, double *_vy);
 
-    void kernel2D_dirichleCondition(int h, int w, SpaceType *spaceTypes, double *_pressure, double *_vx, double *_vy);
+    void kernel2D_dirichleCondition(int h, int w, int *spaceTypes, double *_pressure, double *_vx, double *_vy);
 
-    void kernel1D_clearSpaceTypes(int s, SpaceType *spaceTypes);
+    void kernel1D_clearSpaceTypes(int s, int *spaceTypes);
 
-    void kernel2D_createSolid(int h, int w, SpaceType *_spaceTypes);
+    void kernel2D_createSolid(int h, int w, int *_spaceTypes);
 
     void kernel2D_meanVelocities(int h, int w, GridPICInfo *_gridInfo, double *_vx, double *_vy);
 
-    void kernel1D_createFluidFromParticles(int s, Particle *_particles, SpaceType *_spaceTypes);
+    void kernel1D_createFluidFromParticles(int s, Particle *_particles, int *_spaceTypes);
 
     void kernel1D_particlesToGridVelocity(int s, Particle *_particles, GridPICInfo *_gridInfo);
 
     void
     kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy, double *_diff_vx,
                          double *_diff_vy);
-
-    int round(double d);
 };
 
 

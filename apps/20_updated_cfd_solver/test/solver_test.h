@@ -4,7 +4,9 @@
 #include <cxxtest/TestSuite.h>
 #include "../src/test_class.h"
 #include <vector>
-
+#define Solid 0
+#define Empty 1
+#define Fluid 2
 using std::vector;
 
 double EPS = 10e-5;
@@ -25,15 +27,15 @@ void basicSolidSetup(Solver &solver) {
     int size = 6;
     int dx = 1;
     int dt = 1;
-    vector<SpaceType> spaceTypes(size * size);
+    vector<int> spaceTypes(size * size);
     for (int i = 0; i < size; ++i) {
         for (int j = 0; j < size; ++j) {
             if (i == 0 || i == size - 1 || j == 0 || j == size - 1) {
-                spaceTypes[i + size * j] = SpaceType::Solid;
+                spaceTypes[i + size * j] = Solid;
             } else if ((j == 3 && (i == 1 || i == 3)) || (j == 4 && i == 2)) {
-                spaceTypes[i + size * j] = SpaceType::Empty;
+                spaceTypes[i + size * j] = Empty;
             } else {
-                spaceTypes[i + size * j] = SpaceType::Fluid;
+                spaceTypes[i + size * j] = Fluid;
             }
         }
     }
@@ -95,7 +97,7 @@ public:
                 1.09, 0.09,
                 -1.91, -2.91};
 
-        solver.addForces(solver.vy.data(), 0);
+//        solver.kernel2D_addForces(2, 2solver.vy.data(), 0);
 
         TS_ASSERT_VECTOR_EQUALS(solver.vy, gt)
     }
@@ -184,52 +186,6 @@ public:
         TS_ASSERT_EQUALS(solver.getIdx(1, 1), 16)
         TS_ASSERT_EQUALS(solver.getIdxX(1, 2), 13)
         TS_ASSERT_EQUALS(solver.getIdxY(1, 3), 11)
-    }
-
-    void testCalcPreconditioner() {
-
-    }
-
-    void project() {
-        Solver solver = Solver();
-        int size = 4;
-        vector<SpaceType> spaceTypes(size * size);
-        for (int i = 0; i < size; ++i) {
-            for (int j = 0; j < size; ++j) {
-                if (i == 0 || i == size - 1 || j == 0 || j == size - 1) {
-                    spaceTypes[i + size * j] = SpaceType::Solid;
-                } else {
-                    spaceTypes[i + size * j] = SpaceType::Fluid;
-                }
-            }
-        }
-//
-//        solver.vx = {
-//                1, 2, 3, 4, 5, 6, 7,
-//                1, 2, 3, 4, 5, 6, 7,
-//                1, 2, 3, 4, 5, 6, 7,
-//                1, 2, 3, 4, 5, 6, 7,
-//                1, 2, 3, 4, 5, 6, 7,
-//                1, 2, 3, 4, 5, 6, 7
-//        };
-//
-//        solver.vy = {
-//                1, 1, 1, 1, 1, 1,
-//                2, 2, 2, 2, 2, 2,
-//                3, 3, 3, 3, 3, 3,
-//                4, 4, 4, 4, 4, 4,
-//                5, 5, 5, 5, 5, 5,
-//                6, 6, 6, 6, 6, 6,
-//                7, 7, 7, 7, 7, 7
-//        };
-
-        solver.spaceTypes = spaceTypes;
-        solver.size = size;
-        solver.dx = 1;
-        solver.dt = 1;
-        solver.density = 1;
-        solver.setParameters();
-        solver.project();
     }
 
 };

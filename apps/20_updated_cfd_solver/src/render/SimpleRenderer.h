@@ -5,7 +5,9 @@
 #include <vector>
 #include "src/test_class.h"
 #include "IRenderer.h"
-
+#define Solid 0
+#define Empty 1
+#define Fluid 2
 
 class SimpleRenderer: public IRenderer {
 
@@ -57,10 +59,10 @@ public:
 
     SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size);
 
-    void saveImage(const std::string &image_name, std::vector<SpaceType> &spaceTypes,
+    void saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
                    std::vector<Particle>, RenderMode mode) override;
 
-    void fillEmptyImage(vector<unsigned char> &image, std::vector<SpaceType> &spaceTypes) const;
+    void fillEmptyImage(vector<unsigned char> &image, std::vector<int> &spaceTypes) const;
 
     int countPixelIndex(int i, int j, int k) const;
 
@@ -87,7 +89,7 @@ public:
     int getIndex(float x) const;
 
     void
-    fillSquareImage(vector<unsigned char> &image, vector<SpaceType> &spaceTypes, vector<Particle> &particles) const;
+    fillSquareImage(vector<unsigned char> &image, vector<int> &spaceTypes, vector<Particle> &particles) const;
 
     void addToPixel(vector<unsigned char> &image, int indx, Color color) const;
 
