@@ -53,12 +53,12 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -fPIC")
 #        ../vkutils/geom/vk_mesh.cpp
 #        ../vkutils/geom/cmesh.cpp)
 
-find_package(CxxTest REQUIRED)
-if(CXXTEST_FOUND)
-    include_directories(${CXXTEST_INCLUDE_DIR})
-    enable_testing()
-    CXXTEST_ADD_TEST(unittest_solver solver_test.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/solver_test.h src/test_class.cpp)
-endif()
+#find_package(CxxTest REQUIRED)
+#if(CXXTEST_FOUND)
+#    include_directories(${CXXTEST_INCLUDE_DIR})
+#    enable_testing()
+#    CXXTEST_ADD_TEST(unittest_solver solver_test.cpp ${CMAKE_CURRENT_SOURCE_DIR}/test/solver_test.h src/test_class.cpp)
+#endif()
 
 add_executable(testapp
         src/test_class.cpp
