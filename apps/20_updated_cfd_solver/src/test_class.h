@@ -38,7 +38,7 @@ public:
     const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
     const double TOL = 1e-9; // epsilon для давления
     double viscosity = 0.0001;
-    int particles_pressure_coef = 0;//10
+    int particles_pressure_coef = 10;//10
     double maximum_vel = 0.0;
 
     int overlap = 2;
@@ -140,7 +140,7 @@ public:
 
     void kernel2D_dirichleCondition(int h, int w, int *spaceTypes, double *_pressure, double *_vx, double *_vy);
 
-    void kernel1D_clearSpaceTypes(int s, int *spaceTypes);
+    void kernel1D_clearSpaceTypes(int size, int *spaceTypes);
 
     void kernel2D_createSolid(int h, int w, int *_spaceTypes);
 

@@ -159,7 +159,13 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     }
 
     //Обновить скорости с помощью давлений
+
+    kernel1D_countParticlesNum(particlesSize);
+    kernel2D_changePressureWithParticles(size, size, spaceTypes.data(), counts.data(), pressure.data());
+
     kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+    checkDivergence();
+
     //Снова зануляем во избежании ошибок
     kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
 
@@ -169,7 +175,6 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     kernel1D_advectParticles(particlesSize, particles.data(), diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
     int copy_size = sizeof(float) * size * size;
 //    memcpy((float *)output, (float *)pressure.data(), copy_size);
-//    checkDivergence();
 }
 
 
@@ -394,27 +399,9 @@ void Solver::kernel1D_dotProduct(int size, double *first, double *second, double
 
 //Обновляем скорости с помощью вычисленного вектора давлений
 void Solver::kernel2D_updateVelocities(int h, int w, int *_spaceTypes, double *_pressure, double *_vx, double *_vy) {
-    vector<int> counts = {};
-    counts.resize(size * size, 0);
-    for (int i = 0; i < particlesSize; ++i) {
-        int x = roundValue(1, size - 2, particles[i].pos_x / dx);
-        int y = roundValue(1, size - 2, particles[i].pos_y / dx);
-        counts[getIdx(x, y)]++;
-    }
-    for (int j = 1; j < size - 1; ++j) {
-        for (int i = 1; i < size - 1; ++i) {
-            if (spaceTypes[getIdx(i, j)] == Fluid) {
-                int c = counts[getIdx(i, j)];
-                if (c > 8) {
-                    pressure[getIdx(i, j)] += particles_pressure_coef * (c - 8);
-                }
-            }
-        }
-    }
-
-    double scale = dt / (density * dx);
-    for (int j = 1; j < size - 1; ++j) {
-        for (int i = 1; i < size - 1; ++i) {
+    for (int j = 1; j < h; ++j) {
+        for (int i = 1; i < w; ++i) {
+            double scale = dt / (density * dx);
             if (_spaceTypes[getIdx(i - 1, j)] == Fluid ||
                 _spaceTypes[getIdx(i, j)] == Fluid) {
                 if (_spaceTypes[getIdx(i - 1, j)] == Solid ||
@@ -436,6 +423,27 @@ void Solver::kernel2D_updateVelocities(int h, int w, int *_spaceTypes, double *_
             }
 
         }
+    }
+}
+
+void Solver::kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes, int *counts, double *pressure) {
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            if (spaceTypes[getIdx(i, j)] == Fluid) {
+                int c = counts[getIdx(i, j)];
+                if (c > 8) {
+                    pressure[getIdx(i, j)] += particles_pressure_coef * (c - 8);
+                }
+            }
+        }
+    }
+}
+
+void Solver::kernel1D_countParticlesNum(int size) {
+    for (int i = 0; i < size; ++i) {
+        int x = roundValue(1, Solver::size - 2, particles[i].pos_x / dx);
+        int y = roundValue(1, Solver::size - 2, particles[i].pos_y / dx);
+        counts[getIdx(x, y)]++;
     }
 }
 
