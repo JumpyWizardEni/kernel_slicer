@@ -12,7 +12,7 @@ enum class RenderMode {
 class IRenderer {
 public:
     virtual void saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
-                           std::vector<Particle>, RenderMode mode) = 0;
+                           std::vector<Solver::Particle>, RenderMode mode) = 0;
 
     virtual ~IRenderer() = default;
 };

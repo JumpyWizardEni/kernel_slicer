@@ -61,14 +61,14 @@ void Solver::performStep(int w, int h, double *input, double *output) {
 
     //Создаем MAC сетку по частицам
     kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
-    kernel1D_createFluidFromParticles(particles_size, particles.data(), spaceTypes.data());
+    kernel1D_createFluidFromParticles(particlesSize, particles.data(), spaceTypes.data());
     kernel2D_createSolid(size, size, spaceTypes.data());
     kernel1D_createAdditionalSolid(solid_indices.size(), solid_indices.data(), spaceTypes.data());
 
     //Переносим скорости
     fillWithZeros(vx.data(), size * (size + 1));
     fillWithZeros(vy.data(), size * (size + 1));
-    kernel1D_particlesToGridVelocity(particles_size, particles.data(), gridInfo.data());
+    kernel1D_particlesToGridVelocity(particlesSize, particles.data(), gridInfo.data());
     kernel2D_meanVelocities(size, size, gridInfo.data(), vx.data(), vy.data());
 
     //Считаем новый dt
@@ -160,7 +160,7 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     // перенос частиц
     kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
                          diff_vy.data());
-    kernel1D_advectParticles(particles_size, particles.data(), diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
+    kernel1D_advectParticles(particlesSize, particles.data(), diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
     int copy_size = sizeof(float) * size * size;
 //    memcpy((float *)output, (float *)pressure.data(), copy_size);
 //    checkDivergence();
@@ -396,7 +396,7 @@ void Solver::kernel1D_dotProduct(int size, double *first, double *second, double
 void Solver::kernel2D_updateVelocities(int h, int w, int *_spaceTypes, double *_pressure, double *_vx, double *_vy) {
     vector<int> counts = {};
     counts.resize(size * size, 0);
-    for (int i = 0; i < particles_size; ++i) {
+    for (int i = 0; i < particlesSize; ++i) {
         int x = roundValue(1, size - 2, particles[i].pos_x / dx);
         int y = roundValue(1, size - 2, particles[i].pos_y / dx);
         counts[getIdx(x, y)]++;

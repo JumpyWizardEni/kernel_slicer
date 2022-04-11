@@ -12,7 +12,7 @@ SimpleRenderer::SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size) 
 }
 
 void SimpleRenderer::saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
-                               std::vector<Particle> particles, RenderMode mode) {
+                               std::vector<Solver::Particle> particles, RenderMode mode) {
     std::vector<unsigned char> image;
     image.resize(grid_num * grid_num * 4 * grid_px_size * grid_px_size, 0);
 
@@ -70,25 +70,25 @@ SimpleRenderer::drawSquareWithAddition(const SimpleRenderer::Color color, int i,
 }
 
 struct sort_particles_x {
-    bool operator()(Particle &left, Particle &right) {
+    bool operator()(Solver::Particle &left, Solver::Particle &right) {
         return left.pos_x <= right.pos_x;
     }
 };
 
 
 struct sort_particles_y {
-    bool operator()(Particle &left, Particle &right) {
+    bool operator()(Solver::Particle &left, Solver::Particle &right) {
         return left.pos_y <= right.pos_y;
     }
 };
 
-void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle> &particles) {
+void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Solver::Particle> &particles) {
     const Color fluidColor = Color(5, 125, 158);
 //    std::sort(particles.begin(), particles.end(), sort_particles_x());
 //    std::sort(particles.begin(), particles.end(), sort_particles_y());
     std::map<int, vector<int>> part_count = std::map<int, vector<int>>(); // index to number of particles
     for (int i = 0; i < particles.size(); ++i) {
-        Particle &p = particles[i];
+        Solver::Particle &p = particles[i];
         int ind = round(p.pos_x / dx) + grid_num * round(p.pos_y / dx);
         if (part_count.count(ind)) {
             part_count[ind].push_back(i);
@@ -116,7 +116,7 @@ void SimpleRenderer::fillBlobbies(vector<unsigned char> &image, vector<Particle>
             radius = 8;
             max_xy = 2;
         }
-        vector<Particle> p = {particles[indices[0]], particles[indices[1]], particles[indices[2]]};
+        vector<Solver::Particle> p = {particles[indices[0]], particles[indices[1]], particles[indices[2]]};
         float max_x, max_y, min_x, min_y;
         vector<std::pair<int, int>> fillIndices = std::move(getIndices(p, 0, U0, min_x, max_x, min_y, max_y));
         for (auto &ind: fillIndices) {
@@ -156,7 +156,7 @@ void SimpleRenderer::addToPixel(vector<unsigned char> &image, int indx, Color co
 }
 
 bool
-SimpleRenderer::isFluid(int i, int j, vector<Particle> &particles, int particle_indx, float U0, float min_x,
+SimpleRenderer::isFluid(int i, int j, vector<Solver::Particle> &particles, int particle_indx, float U0, float min_x,
                         float max_x, float min_y, float max_y) const {
     double sum = 0;
     for (int k = particle_indx; k < particle_indx + 3; k++) {
@@ -168,12 +168,12 @@ SimpleRenderer::isFluid(int i, int j, vector<Particle> &particles, int particle_
     return true;
 }
 
-double SimpleRenderer::countPotential(int i, int j, Particle &particle, float min_x, float max_x, float min_y,
+double SimpleRenderer::countPotential(int i, int j, Solver::Particle &particle, float min_x, float max_x, float min_y,
                                       float max_y) const {
     return pow(1 - countDistance(i, j, particle, min_x, max_x, min_y, max_y), 2);
 }
 
-double SimpleRenderer::countDistance(int i, int j, Particle &particle, float min_x, float max_x, float min_y,
+double SimpleRenderer::countDistance(int i, int j, Solver::Particle &particle, float min_x, float max_x, float min_y,
                                      float max_y) const {
     int size = grid_px_size / dx;
     float x = particle.pos_x * size;
@@ -188,7 +188,7 @@ double SimpleRenderer::countDistance(int i, int j, Particle &particle, float min
     return distance;
 }
 
-void SimpleRenderer::drawCircle(vector<unsigned char> &image, Particle &particle, int radius) {
+void SimpleRenderer::drawCircle(vector<unsigned char> &image, Solver::Particle &particle, int radius) {
     const Color fluidColor = Color(5, 125, 158);
     int x = round(particle.pos_x / dx);
     int y = round(particle.pos_y / dx);
@@ -213,12 +213,12 @@ int SimpleRenderer::getIndex(float x) const {
 }
 
 vector<std::pair<int, int>>
-SimpleRenderer::getIndices(vector<Particle> &particles, int particle_idx, float u0, float &left_x, float &right_x,
+SimpleRenderer::getIndices(vector<Solver::Particle> &particles, int particle_idx, float u0, float &left_x, float &right_x,
                            float &top_y, float &bot_y) const {
     vector<std::pair<int, int>> res = {};
-    Particle &p1 = particles[particle_idx];
-    Particle &p2 = particles[particle_idx + 1];
-    Particle &p3 = particles[particle_idx + 2];
+    Solver::Particle &p1 = particles[particle_idx];
+    Solver::Particle &p2 = particles[particle_idx + 1];
+    Solver::Particle &p3 = particles[particle_idx + 2];
     double min_x = std::min(std::min(getIndex(p1.pos_x), getIndex(p2.pos_x)), getIndex(p3.pos_x));
     double max_x = std::max(std::max(getIndex(p1.pos_x), getIndex(p2.pos_x)), getIndex(p3.pos_x));
     double min_y = std::min(std::min(getIndex(p1.pos_y), getIndex(p2.pos_y)), getIndex(p3.pos_y));
@@ -242,7 +242,7 @@ SimpleRenderer::getIndices(vector<Particle> &particles, int particle_idx, float 
 }
 
 void SimpleRenderer::fillSquareImage(vector<unsigned char> &image, vector<int> &spaceTypes,
-                                     vector<Particle> &particles) const {
+                                     vector<Solver::Particle> &particles) const {
     const Color solidColor = Color(121, 134, 133);
     const Color emptyColor = Color(255, 255, 255);
     const Color fluidColor = Color(15, 94, 156);
@@ -257,7 +257,7 @@ void SimpleRenderer::fillSquareImage(vector<unsigned char> &image, vector<int> &
         }
     }
     for (int i = 0; i < particles.size(); ++i) {
-        Particle &p = particles[i];
+        Solver::Particle &p = particles[i];
         int x = cutValue(1, grid_num - 2, floor(p.pos_x / dx));
         int y = cutValue(1, grid_num - 2, floor(p.pos_y / dx));
 
@@ -267,7 +267,7 @@ void SimpleRenderer::fillSquareImage(vector<unsigned char> &image, vector<int> &
 //    interpolate(image, 1);
 //    std::map<int, int> part_count = std::map<int, int>(); // index to number of particles
 //    for (int i = 0; i < particles.size(); ++i) {
-//        Particle &p = particles[i];
+//        Solver::Particle &p = particles[i];
 //        int ind = round(p.pos_x * grid_num) + grid_num * round(p.pos_y * grid_num);
 //        if (part_count.count(ind)) {
 //            part_count[ind]++;

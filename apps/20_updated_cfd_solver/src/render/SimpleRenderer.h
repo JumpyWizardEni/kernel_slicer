@@ -60,7 +60,7 @@ public:
     SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size);
 
     void saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
-                   std::vector<Particle>, RenderMode mode) override;
+                   std::vector<Solver::Particle>, RenderMode mode) override;
 
     void fillEmptyImage(vector<unsigned char> &image, std::vector<int> &spaceTypes) const;
 
@@ -69,27 +69,27 @@ public:
     void drawSquare(Color color, int i, vector<unsigned char> &image) const;
 
 //    void drawCircle(const Color color, int i, vector<unsigned char> &image) const;
-    void fillBlobbies(vector<unsigned char> &image, vector<Particle> &particles);
+    void fillBlobbies(vector<unsigned char> &image, vector<Solver::Particle> &particles);
 
     void fillPixel(vector<unsigned char> &image, int indx, Color color) const;
 
-    bool isFluid(int i, int j, vector<Particle> &particles, int particle_indx, float U0, float min_x, float max_x,
+    bool isFluid(int i, int j, vector<Solver::Particle> &particles, int particle_indx, float U0, float min_x, float max_x,
                  float min_y, float max_y) const;
 
-    double countPotential(int i, int j, Particle &particle, float min_x, float max_x, float min_y, float max_y) const;
+    double countPotential(int i, int j, Solver::Particle &particle, float min_x, float max_x, float min_y, float max_y) const;
 
-    double countDistance(int i, int j, Particle &particle, float min_x, float max_x, float min_y, float max_y) const;
+    double countDistance(int i, int j, Solver::Particle &particle, float min_x, float max_x, float min_y, float max_y) const;
 
-    void drawCircle(vector<unsigned char> &image, Particle &particle, int radius);
+    void drawCircle(vector<unsigned char> &image, Solver::Particle &particle, int radius);
 
     vector<std::pair<int, int>>
-    getIndices(vector<Particle> &particles, int particle_idx, float u0, float &left_x, float &right_x, float &top_y,
+    getIndices(vector<Solver::Particle> &particles, int particle_idx, float u0, float &left_x, float &right_x, float &top_y,
                float &bot_y) const;
 
     int getIndex(float x) const;
 
     void
-    fillSquareImage(vector<unsigned char> &image, vector<int> &spaceTypes, vector<Particle> &particles) const;
+    fillSquareImage(vector<unsigned char> &image, vector<int> &spaceTypes, vector<Solver::Particle> &particles) const;
 
     void addToPixel(vector<unsigned char> &image, int indx, Color color) const;
 

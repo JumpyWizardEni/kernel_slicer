@@ -9,7 +9,7 @@
 
 class VulkanRender: IRenderer {
     void saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
-                   std::vector<Particle>, RenderMode mode) override;
+                   std::vector<Solver::Particle>, RenderMode mode) override;
 
     
 };

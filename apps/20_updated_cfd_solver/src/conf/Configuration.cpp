@@ -19,13 +19,13 @@ void Configuration::start() {
 
 void Configuration::fillSolverData() {
     double dx = (double) grid_size / grid_num;
-    vector<Particle> particles;
+    vector<Solver::Particle> particles;
     int particles_size = 0;
     for (int i = 0; i < water_indices.size(); ++i) {
         for (int k = 0; k < particles_per_grid; ++k) {
             double r1 = randfrom(0.4, 0.6);
             double r2 = randfrom(0.4, 0.6);
-            Particle p = Particle();
+            Solver::Particle p = Solver::Particle();
             p.pos_x = water_indices[i].first * dx + dx * r1;
             p.pos_y = water_indices[i].second * dx + dx * r2;
             particles.push_back(p);
@@ -39,7 +39,7 @@ void Configuration::fillSolverData() {
     vector<double> pressure(grid_num * grid_num, 0);
 
     solver->size = grid_num;
-    solver->particles_size = particles_size;
+    solver->particlesSize = particles_size;
     solver->particles = particles;
     solver->dx = dx;
     solver->vx = vx;
@@ -65,12 +65,12 @@ void Configuration::simulate() {
                     for (int k = 0; k < particles_per_grid; ++k) {
                         double r1 = randfrom(0.0, 1.0);
                         double r2 = randfrom(0.0, 1.0);
-                        Particle p = Particle();
+                        Solver::Particle p = Solver::Particle();
                         p.pos_x = additional_fluid_indices[i].first * dx + dx * r1;
                         p.pos_y = additional_fluid_indices[i].second * dx + dx * r2;
                         solver->particles.push_back(p);
                     }
-                    solver->particles_size += particles_per_grid;
+                    solver->particlesSize += particles_per_grid;
 
                 }
             }

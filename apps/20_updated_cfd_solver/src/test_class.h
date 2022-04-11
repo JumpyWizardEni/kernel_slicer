@@ -5,34 +5,29 @@
 
 using std::vector;
 
-
-struct Particle {
-    double vx = 0.0;
-    double vy = 0.0;
-    double pos_x = 0.0; // from 0.0 to 1.0
-    double pos_y = 0.0; // from 0.0 to 1.0
-
-    Particle() = default;
-    Particle(double vx, double vy, double pos_x, double pos_y): vx(vx), vy(vy), pos_x(pos_x), pos_y(pos_y) {};
-};
-
-struct GridPICInfo {
-    double sum_vx = 0;
-    double sum_vy = 0;
-    double weight_vx = 0;
-    double weight_vy = 0;
-};
-
 class Solver {
 
 public:
+    struct Particle {
+        double vx;
+        double vy;
+        double pos_x; // from 0.0 to 1.0
+        double pos_y; // from 0.0 to 1.0
+    };
+
+    struct GridPICInfo {
+        double sum_vx;
+        double sum_vy;
+        double weight_vx;
+        double weight_vy;
+    };
 
     const int Solid = 0;
     const int Empty = 1;
     const int Fluid = 2;
 
     int size = 0; // Количество ячеек по одному направлению
-    int particles_size = 0;
+    int particlesSize = 0;
     vector<Particle> particles;
     vector<GridPICInfo> gridInfo;
     double dt = 0.033; // Меняется каждый шаг
