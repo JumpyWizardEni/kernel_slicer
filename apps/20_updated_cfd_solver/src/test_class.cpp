@@ -193,7 +193,7 @@ void Solver::kernel2D_addForces(int h, int w, double *v, double a, int *_spaceTy
     }
 }
 
-double Solver::interpolate(double q, double *q_copy, double x, double y, int i, int j) {
+double Solver::interpolate(double q, double *q_copy, double x, double y, int i, int j, double dx, int size) {
     double w_x = (ceil(x) - x) * dx;
     double w_y = (ceil(y) - y) * dx;
 
@@ -207,17 +207,17 @@ double Solver::interpolate(double q, double *q_copy, double x, double y, int i, 
     double w2 = w_x + (w_x_2 - w_x_3) / 2;
     double w3 = (w_x_3 - w_x) / 6;
 
-    double q_j_1 = w0 * q_copy[getIdx(i - 1, j - 1)] + w1 * q_copy[getIdx(i, j - 1)] +
-                   w2 * q_copy[getIdx(i + 1, j - 1)] + w3 * q_copy[getIdx(i + 2, j - 1)];
+    double q_j_1 = w0 * q_copy[i - 1 + size * (j - 1)] + w1 * q_copy[i + size * (j - 1)] +
+                   w2 * q_copy[i + 1 + size * (j - 1)] + w3 * q_copy[i + 2 + size * (j - 1)];
 
-    double q_j = w0 * q_copy[getIdx(i - 1, j)] + w1 * q_copy[getIdx(i, j)] +
-                 w2 * q_copy[getIdx(i + 1, j)] + w3 * q_copy[getIdx(i + 2, j)];
+    double q_j = w0 * q_copy[i - 1 + size * j] + w1 * q_copy[i + size * j] +
+                 w2 * q_copy[i + 1 + size * j] + w3 * q_copy[i + 2 + size * j];
 
-    double q_j1 = w0 * q_copy[getIdx(i - 1, j + 1)] + w1 * q_copy[getIdx(i, j + 1)] +
-                  w2 * q_copy[getIdx(i + 1, j + 1)] + w3 * q_copy[getIdx(i + 2, j + 1)];
+    double q_j1 = w0 * q_copy[i - 1 + size * (j + 1)] + w1 * q_copy[i + size * (j + 1)] +
+                  w2 * q_copy[i + 1 + size * (j + 1)] + w3 * q_copy[i + 2 + size * (j + 1)];
 
-    double q_j2 = w0 * q_copy[getIdx(i - 1, j + 2)] + w1 * q_copy[getIdx(i, j + 2)] +
-                  w2 * q_copy[getIdx(i + 1, j + 2)] + w3 * q_copy[getIdx(i + 2, j + 2)];
+    double q_j2 = w0 * q_copy[i - 1 + size * (j + 2)] + w1 * q_copy[i + size * (j + 2)] +
+                  w2 * q_copy[i + 1 + size * (j + 2)] + w3 * q_copy[i + 2 + size * (j + 2)];
 
     //По y
     double w_y_2 = w_y * w_y;
@@ -233,9 +233,9 @@ double Solver::interpolate(double q, double *q_copy, double x, double y, int i, 
 void
 Solver::kernel2D_calcNegativeDivergence(int h, int w, int *_spaceTypes, double *_rhs, double *_vx, double *_vy) {
 
-    double scale = 1 / dx;
     for (int j = 0; j < h; ++j) {
         for (int i = 0; i < w; ++i) {
+            double scale = 1 / dx;
             if (_spaceTypes[getIdx(i, j)] == Fluid) {
                 _rhs[getIdx(i, j)] =
                         -scale *
@@ -259,9 +259,9 @@ Solver::kernel2D_calcNegativeDivergence(int h, int w, int *_spaceTypes, double *
 
 void Solver::kernel2D_fillPressureMatrix(int h, int w, int *_spaceTypes, double *_press_diag, double *_pressX,
                                          double *_pressY) {
-    double scale = dt / (density * dx * dx);
     for (int j = 0; j < h; ++j) {
         for (int i = 0; i < w; ++i) {
+            double scale = dt / (density * dx * dx);
             if (_spaceTypes[getIdx(i, j)] == Fluid) {
                 if (i != 0) {
                     if (_spaceTypes[getIdx(i - 1, j)] != Solid) {
@@ -445,18 +445,21 @@ void Solver::fillWithZeros(double *v, int size) {
     }
 }
 
+void Solver::fillWithZeros(int *v, int size) {
+    for (int i = 0; i < size; ++i) {
+        v[i] = 0;
+    }
+}
+
 int Solver::getIdx(int i, int j) {
-//    return i + size * (size - j - 1);
     return i + size * j;
 }
 
 int Solver::getIdxY(int i, int j) {
-//    return i + size * (size - j);
     return i + size * j;
 }
 
 int Solver::getIdxX(int i, int j) {
-//    return i + (size + 1) * (size - j - 1);
     return i + (size + 1) * j;
 }
 
@@ -472,6 +475,7 @@ void Solver::resetParams() {
     fillWithZeros(diff_vy.data(), s);
     fillWithZeros(diff_vx.data(), s);
     fillWithZeros(q.data(), s);
+    fillWithZeros(counts.data(), s);
 }
 
 void Solver::checkDivergence() {
@@ -534,8 +538,8 @@ double Solver::pow(double value) {
     return value * value;
 }
 
-void Solver::kernel1D_clearSpaceTypes(int s, int *spaceTypes) {
-    for (int i = 0; i < s; ++i) {
+void Solver::kernel1D_clearSpaceTypes(int size, int *spaceTypes) {
+    for (int i = 0; i < size; ++i) {
         spaceTypes[i] = Empty;
     }
 }
@@ -626,10 +630,10 @@ Solver::kernel1D_advectParticles(int particles_size, Particle *_particles, doubl
         int y = roundValue(0, size - 1, particle.pos_y / dx);
 
         double vx_interpolated = interpolate(_diff_vx[getIdx(x, y)], _diff_vx, particle.pos_x / dx,
-                                             particle.pos_y / dx, x, y);
+                                             particle.pos_y / dx, x, y, dx, size);
         double vy_interpolated = interpolate(_diff_vy[getIdx(x, y)], _diff_vy, particle.pos_x / dx,
                                              particle.pos_y / dx, x,
-                                             y);
+                                             y, dx, size);
         particle.vx = alpha * getVelocityX(_vx, x, y) + (1 - alpha) * (particle.vx + vx_interpolated);
         particle.vy = alpha * getVelocityY(_vy, x, y) + (1 - alpha) * (particle.vy + vy_interpolated);
 

@@ -85,8 +85,7 @@ public:
 
 
     double
-    interpolate(double q, double *q_copy, double x, double y, int i,
-                int j); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
+    interpolate(double q, double *q_copy, double x, double y, int i, int j, double dx, int size); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
 
     void kernel2D_addForces(int h, int w, double *v, double a, int *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
 
@@ -156,6 +155,14 @@ public:
                          double *_diff_vy);
 
     void kernel1D_createAdditionalSolid(int size, int *indices, int *_spaceTypes);
+
+    void fillWithZeros(int *v, int size);
+
+    void kernel1D_countParticlesNum(int size);
+
+    void kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes, int *counts, double *pressure);
+
+    void kernel1D_applyPreconditionerForward(int _size);
 };
 
 
