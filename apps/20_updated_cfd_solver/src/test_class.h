@@ -28,6 +28,7 @@ public:
 
     int size = 0; // Количество ячеек по одному направлению
     int particlesSize = 0;
+    double dotResult = 0;
     vector<Particle> particles;
     vector<GridPICInfo> gridInfo;
     double dt = 0.033; // Меняется каждый шаг
@@ -37,7 +38,12 @@ public:
     const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
     const double TOL = 1e-9; // epsilon для давления
     double viscosity = 0.0001;
-    int particles_pressure_coef = 10;
+    int particles_pressure_coef = 0;//10
+    double maximum_vel = 0.0;
+
+    int overlap = 2;
+    int sub_domains = 5;
+    int subgrid_size = size / sub_domains;
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
     vector<double> pressure;
@@ -55,6 +61,7 @@ public:
     vector<double> prev_vy;
 
     vector<int> spaceTypes;
+    vector<int> counts;
 
     vector<double> vx; // (size + 1), size
     vector<double> vy; // size, (size + 1)
@@ -140,7 +147,7 @@ public:
 
     void kernel2D_meanVelocities(int h, int w, GridPICInfo *_gridInfo, double *_vx, double *_vy);
 
-    void kernel1D_createFluidFromParticles(int s, Particle *_particles, int *_spaceTypes);
+    void kernel1D_createFluidFromParticles(int _size);
 
     void kernel1D_particlesToGridVelocity(int s, Particle *_particles, GridPICInfo *_gridInfo);
 

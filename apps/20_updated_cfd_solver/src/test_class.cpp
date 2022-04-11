@@ -6,6 +6,7 @@
 #include <cstring>
 
 using std::vector;
+using std::max;
 
 Solver::Solver() = default;
 
@@ -26,6 +27,8 @@ void Solver::setParameters() {
     diff_vy.resize(size * size, 0);
     prev_vx.resize(size * (size + 1), 0);
     prev_vy.resize(size * (size + 1), 0);
+    counts.resize(size * size, 0);
+
 }
 
 int Solver::roundValue(int from, int to, double value) {
@@ -36,9 +39,9 @@ int Solver::roundValue(int from, int to, double value) {
         value = from;
     }
 
-    int f = floor(value);
-    if (value - f > 0.5) {
-        return ceil(value);
+    int f = (int) floor(value);
+    if (value - (double) f > 0.5) {
+        return (int) ceil(value);
     }
     return f;
 }
@@ -61,7 +64,7 @@ void Solver::performStep(int w, int h, double *input, double *output) {
 
     //Создаем MAC сетку по частицам
     kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
-    kernel1D_createFluidFromParticles(particlesSize, particles.data(), spaceTypes.data());
+    kernel1D_createFluidFromParticles(particlesSize);
     kernel2D_createSolid(size, size, spaceTypes.data());
     kernel1D_createAdditionalSolid(solid_indices.size(), solid_indices.data(), spaceTypes.data());
 
@@ -550,11 +553,11 @@ void Solver::kernel2D_createSolid(int h, int w, int *_spaceTypes) {
     }
 }
 
-void Solver::kernel1D_createFluidFromParticles(int s, Particle *_particles, int *_spaceTypes) {
-    for (int i = 0; i < s; ++i) {
-        int x = roundValue(0, size - 1, _particles[i].pos_x / dx);
-        int y = roundValue(0, size - 1, _particles[i].pos_y / dx);
-        _spaceTypes[getIdx(x, y)] = Fluid;
+void Solver::kernel1D_createFluidFromParticles(int _size) {
+    for (int i = 0; i < _size; ++i) {
+        int x = roundValue(0, size - 1, particles[i].pos_x / dx);
+        int y = roundValue(0, size - 1, particles[i].pos_y / dx);
+        spaceTypes[getIdx(x, y)] = Fluid;
     }
 }
 
