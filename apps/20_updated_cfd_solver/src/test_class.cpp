@@ -71,12 +71,15 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     //Переносим скорости
     fillWithZeros(vx.data(), size * (size + 1));
     fillWithZeros(vy.data(), size * (size + 1));
-    kernel1D_particlesToGridVelocity(particlesSize, particles.data(), gridInfo.data());
-    kernel2D_meanVelocities(size, size, gridInfo.data(), vx.data(), vy.data());
+    kernel1D_particlesToGridVelocity(particlesSize);
+    kernel2D_meanVelocities(size, size, vx.data(), vy.data());
 
     //Считаем новый dt
-    countTimeDelta(vx.data(), vy.data());
-
+    maximum_vel = -1;
+    kernel1D_countTimeDelta(size * (size + 1), vx.data(), vy.data());
+    maximum_vel = std::sqrt(maximum_vel);
+    maximum_vel += std::sqrt(5 * dx * std::abs(g)); // чтобы не было деления на 0
+    dt = 5 * dx / maximum_vel;
     //Сохраняем старые значения скоростей
 
     memcpy(prev_vx.data(), vx.data(), sizeof(double) * size * (size + 1));
@@ -171,18 +174,12 @@ void Solver::performStep(int w, int h, double *input, double *output) {
 
 
 //Считаем dt на текущем шаге, dt <= 5 * dx / max(velocity)
-void Solver::countTimeDelta(const double *p_vx, const double *p_vy) {
+void Solver::kernel1D_countTimeDelta(int size, const double *p_vx, const double *p_vy) {
     //Ищем максимум
-    double maximum = -1;
-    for (int i = 0; i < size * (size + 1); ++i) {
+    for (int i = 0; i < size; ++i) {
         double vel = p_vx[i] * p_vx[i] + p_vy[i] * p_vy[i];
-        if (vel > maximum) {
-            maximum = vel;
-        }
+        maximum_vel = max(maximum_vel, vel);
     }
-    maximum = std::sqrt(maximum);
-    maximum += std::sqrt(5 * dx * std::abs(g)); // чтобы не было деления на 0
-    dt = 5 * dx / maximum;
 }
 
 //Добавляем силу тяжести
@@ -580,34 +577,30 @@ double Solver::kFunc(double x, double y) {
     return h2(x / dx) * h2(y / dx);
 }
 
-void Solver::kernel2D_meanVelocities(int h, int w, GridPICInfo *_gridInfo, double *_vx, double *_vy) {
+void Solver::kernel2D_meanVelocities(int h, int w, double *_vx, double *_vy) {
     for (int j = 0; j < h; ++j) {
         for (int i = 0; i < w; ++i) {
-            GridPICInfo &info = _gridInfo[getIdx(i, j)];
-            if (info.sum_vx > 0.0001) {
-                _vx[getIdxX(i, j)] = info.sum_vx / info.weight_vx;
+            if (gridInfo[getIdx(i, j)].sum_vx > 0.0001) {
+                _vx[getIdxX(i, j)] = gridInfo[getIdx(i, j)].sum_vx / gridInfo[getIdx(i, j)].weight_vx;
             }
-            if (info.sum_vy > 0.0001) {
-                _vy[getIdxY(i, j)] = info.sum_vy / info.weight_vy;
+            if (gridInfo[getIdx(i, j)].sum_vy > 0.0001) {
+                _vy[getIdxY(i, j)] = gridInfo[getIdx(i, j)].sum_vy / gridInfo[getIdx(i, j)].weight_vy;
             }
 
         }
     }
 }
 
-void Solver::kernel1D_particlesToGridVelocity(int s, Particle *_particles, GridPICInfo *_gridInfo) {
-    for (int i = 0; i < s; ++i) {
-        Particle &particle = _particles[i];
-
-        int x = roundValue(1, size - 2, particle.pos_x / dx);
-        int y = roundValue(1, size - 2, particle.pos_y / dx);
-        GridPICInfo &info = _gridInfo[getIdx(x, y)];
-        double vx_k = kFunc(particle.pos_x - (x - 0.5) * dx, particle.pos_y - y * dx);
-        double vy_k = kFunc(particle.pos_x - x * dx, particle.pos_y - (y - 0.5) * dx);
-        info.sum_vx += particle.vx * vx_k;
-        info.sum_vy += particle.vy * vy_k;
-        info.weight_vx += vx_k;
-        info.weight_vy += vy_k;
+void Solver::kernel1D_particlesToGridVelocity(int _size) {
+    for (int i = 0; i < _size; ++i) {
+        int x = roundValue(1, size - 2, particles[i].pos_x / dx);
+        int y = roundValue(1, size - 2, particles[i].pos_y / dx);
+        double vx_k = kFunc(particles[i].pos_x - (x - 0.5) * dx, particles[i].pos_y - y * dx);
+        double vy_k = kFunc(particles[i].pos_x - x * dx, particles[i].pos_y - (y - 0.5) * dx);
+        gridInfo[getIdx(x, y)].sum_vx += particles[i].vx * vx_k;
+        gridInfo[getIdx(x, y)].sum_vy += particles[i].vy * vy_k;
+        gridInfo[getIdx(x, y)].weight_vx += vx_k;
+        gridInfo[getIdx(x, y)].weight_vy += vy_k;
     }
 }
 

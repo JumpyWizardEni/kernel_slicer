@@ -81,7 +81,7 @@ public:
     virtual void performStep(int w, int h, double *input __attribute__((size("w", "h"))), double *output __attribute__((size("w", "h"))));
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
-    void countTimeDelta(const double *vx, const double *vy);
+    void kernel1D_countTimeDelta(int size, const double *p_vx, const double *p_vy);
 
 
     double
@@ -145,11 +145,11 @@ public:
 
     void kernel2D_createSolid(int h, int w, int *_spaceTypes);
 
-    void kernel2D_meanVelocities(int h, int w, GridPICInfo *_gridInfo, double *_vx, double *_vy);
+    void kernel2D_meanVelocities(int h, int w, double *_vx, double *_vy);
 
     void kernel1D_createFluidFromParticles(int _size);
 
-    void kernel1D_particlesToGridVelocity(int s, Particle *_particles, GridPICInfo *_gridInfo);
+    void kernel1D_particlesToGridVelocity(int _size);
 
     void
     kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy, double *_diff_vx,
