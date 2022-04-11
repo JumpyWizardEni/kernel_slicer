@@ -91,7 +91,7 @@ public:
 
     void applyPreconditioner();
 
-    void calcPreconditioner();
+    void kernel1D_calcPreconditioner(int _size);
 
     double getVelocityX(double *vx, int i, int j);
 
@@ -128,8 +128,8 @@ public:
     double getAlpha();
 
     void
-    kernel1D_advectParticles(int particles_size, Particle *_particles, double *_diff_vx, double *_diff_vy,
-                             double *_vx, double *_vy, int *_spaceTypes);
+    kernel1D_advectParticles(int _size, double *_diff_vx, double *_diff_vy, double *_vx, double *_vy,
+                             int *_spaceTypes);
 
     void kernel2D_calcNegativeDivergence(int h, int w, int *_spaceTypes, double *_rhs, double *_vx, double *_vy);
 

@@ -114,7 +114,7 @@ void Solver::performStep(int w, int h, double *input, double *output) {
 
     pressureResidual = rhs;
 
-    calcPreconditioner();
+    kernel1D_calcPreconditioner(4);
 
     applyPreconditioner();
 
@@ -172,7 +172,7 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     // перенос частиц
     kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
                          diff_vy.data());
-    kernel1D_advectParticles(particlesSize, particles.data(), diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
+    kernel1D_advectParticles(particlesSize, diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
     int copy_size = sizeof(float) * size * size;
 //    memcpy((float *)output, (float *)pressure.data(), copy_size);
 }
@@ -301,23 +301,32 @@ void Solver::kernel2D_fillPressureMatrix(int h, int w, int *_spaceTypes, double 
 
 
 //MIC Preconditioner matrix
-void Solver::calcPreconditioner() {
-    double safe = 0.25;
-    double tau = 0.97;
-    for (int j = 1; j < size - 1; ++j) {
-        for (int i = 1; i < size - 1; ++i) {
-            if (spaceTypes[getIdx(i, j)] == Fluid) {
-                double e = press_diag[getIdx(i, j)]
-                           - pow(pressX[getIdx(i - 1, j)] * preconditioner[getIdx(i - 1, j)])
-                           - pow(pressY[getIdx(i, j - 1)] * preconditioner[getIdx(i, j - 1)])
-                           - tau * (pressX[getIdx(i - 1, j)] * pressY[getIdx(i - 1, j)] *
-                                    pow(preconditioner[getIdx(i - 1, j)])
-                                    + pressY[getIdx(i, j - 1)] * pressX[getIdx(i, j - 1)] *
-                                      pow(preconditioner[getIdx(i, j - 1)]));
-                if (e < safe * press_diag[getIdx(i, j)]) {
-                    e = press_diag[getIdx(i, j)];
+void Solver::kernel1D_calcPreconditioner(int _size) {
+
+//    for (int k = 0; k < _size; k++) {
+//        int k_x = k % sub_domains;
+//        int k_y = k / sub_domains;
+//        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
+//            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+            if (i >= 0 && j >= 0 && i < size && j < size) {
+                double safe = 0.25;
+                double tau = 0.97;
+                if (spaceTypes[getIdx(i, j)] == Fluid) {
+                    double e = press_diag[getIdx(i, j)]
+                               - pow(pressX[getIdx(i - 1, j)] * preconditioner[getIdx(i - 1, j)])
+                               - pow(pressY[getIdx(i, j - 1)] * preconditioner[getIdx(i, j - 1)])
+                               - tau * (pressX[getIdx(i - 1, j)] * pressY[getIdx(i - 1, j)] *
+                                        pow(preconditioner[getIdx(i - 1, j)])
+                                        + pressY[getIdx(i, j - 1)] * pressX[getIdx(i, j - 1)] *
+                                          pow(preconditioner[getIdx(i, j - 1)]));
+                    if (e < safe * press_diag[getIdx(i, j)]) {
+                        e = press_diag[getIdx(i, j)];
+                    }
+                    preconditioner[getIdx(i, j)] = 1 / std::sqrt(e);
                 }
-                preconditioner[getIdx(i, j)] = 1 / std::sqrt(e);
+//                }
             }
         }
     }
@@ -620,70 +629,77 @@ void
 Solver::kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy,
                              double *_diff_vx,
                              double *_diff_vy) {
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
-            _diff_vx[getIdx(i, j)] = getVelocityX(_vx, i, j) - getVelocityX(_prev_vx, i, j);
-            _diff_vy[getIdx(i, j)] = getVelocityY(_vy, i, j) - getVelocityY(_prev_vy, i, j);
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            _diff_vx[getIdx(i, j)] = (_vx[getIdxX(i, j)] + _vx[getIdxX(i + 1, j)]) / 2 -
+                                     (_prev_vx[getIdxX(i, j)] + _prev_vx[getIdxX(i + 1, j)]) / 2;
+            _diff_vy[getIdx(i, j)] = (_vy[getIdxY(i, j)] + _vy[getIdxY(i, j + 1)]) / 2 -
+                                     (_prev_vy[getIdxY(i, j)] + _prev_vy[getIdxY(i, j + 1)]) / 2;;
         }
     }
 }
 
 void
-Solver::kernel1D_advectParticles(int particles_size, Particle *_particles, double *_diff_vx, double *_diff_vy,
-                                 double *_vx, double *_vy, int *_spaceTypes) {
-    for (int i = 0; i < particles_size; ++i) {
+Solver::kernel1D_advectParticles(int _size, double *_diff_vx, double *_diff_vy, double *_vx, double *_vy,
+                                 int *_spaceTypes) {
+    for (int i = 0; i < _size; ++i) {
         double alpha = getAlpha();
-        Particle &particle = _particles[i];
-        int x = roundValue(0, size - 1, particle.pos_x / dx);
-        int y = roundValue(0, size - 1, particle.pos_y / dx);
+        double _dx = dx;
 
-        double vx_interpolated = interpolate(_diff_vx[getIdx(x, y)], _diff_vx, particle.pos_x / dx,
-                                             particle.pos_y / dx, x, y, dx, size);
-        double vy_interpolated = interpolate(_diff_vy[getIdx(x, y)], _diff_vy, particle.pos_x / dx,
-                                             particle.pos_y / dx, x,
-                                             y, dx, size);
-        particle.vx = alpha * getVelocityX(_vx, x, y) + (1 - alpha) * (particle.vx + vx_interpolated);
-        particle.vy = alpha * getVelocityY(_vy, x, y) + (1 - alpha) * (particle.vy + vy_interpolated);
+        int x = roundValue(0, size - 1, particles[i].pos_x / _dx);
+        int y = roundValue(0, size - 1, particles[i].pos_y / _dx);
+
+
+        double vx_interpolated = interpolate(_diff_vx[getIdx(x, y)], _diff_vx, particles[i].pos_x / _dx,
+                                             particles[i].pos_y / _dx, x, y, _dx, size);
+        double vy_interpolated = interpolate(_diff_vy[getIdx(x, y)], _diff_vy, particles[i].pos_x / _dx,
+                                             particles[i].pos_y / _dx, x,
+                                             y, _dx, size);
+        particles[i].vx = alpha * (_vx[getIdxX(x, y)] + _vx[getIdxX(x + 1, y)]) / 2 +
+                          (1 - alpha) * (particles[i].vx + vx_interpolated);
+        particles[i].vy =
+                alpha * (_vy[getIdxY(x, y)] + _vy[getIdxY(x, y + 1)]) / 2 +
+                (1 - alpha) * (particles[i].vy + vy_interpolated);
 
         //По оси X
-        particle.pos_x += particle.vx * dt;
+        particles[i].pos_x += particles[i].vx * dt;
 
-        x = roundValue(0, size - 1, particle.pos_x / dx);
+        x = roundValue(0, size - 1, particles[i].pos_x / _dx);
 
         //Границы
-        while (x == 0 || particle.pos_x < 0 || x == size - 1 || particle.pos_x > dx * size) {
-            particle.pos_x -= particle.vx * dt;
-            x = roundValue(0, size - 1, particle.pos_x / dx);
+        while (x == 0 || particles[i].pos_x < 0 || x == size - 1 || particles[i].pos_x > _dx * size) {
+            particles[i].pos_x -= particles[i].vx * dt;
+            x = roundValue(0, size - 1, particles[i].pos_x / _dx);
         }
 
         //Другие твердые клетки
-        while(_spaceTypes[getIdx(x, y)] == Solid) {
-            particle.pos_x -= particle.vx * dt;
-            x = roundValue(0, size - 1, particle.pos_x / dx);
+        while (_spaceTypes[getIdx(x, y)] == Solid) {
+            particles[i].pos_x -= particles[i].vx * dt;
+            x = roundValue(0, size - 1, particles[i].pos_x / _dx);
         }
 
         //По оси Y
-        particle.pos_y += particle.vy * dt;
-        y = roundValue(0, size - 1, particle.pos_y / dx);
+        particles[i].pos_y += particles[i].vy * dt;
+        y = roundValue(0, size - 1, particles[i].pos_y / _dx);
 
         //Границы
-        while (y == 0 || particle.pos_y < 0 || y == size - 1 || particle.pos_y > dx * size) {
-            particle.pos_y -= particle.vy * dt;
-            y = roundValue(0, size - 1, particle.pos_y / dx);
+        while (y == 0 || particles[i].pos_y < 0 || y == size - 1 || particles[i].pos_y > _dx * size) {
+            particles[i].pos_y -= particles[i].vy * dt;
+            y = roundValue(0, size - 1, particles[i].pos_y / _dx);
         }
 //
         //Другие твердые клетки
-        while(_spaceTypes[getIdx(x, y)] == Solid) {
-            particle.pos_y -= particle.vy * dt;
-            y = roundValue(0, size - 1, particle.pos_y / dx);
+        while (_spaceTypes[getIdx(x, y)] == Solid) {
+            particles[i].pos_y -= particles[i].vy * dt;
+            y = roundValue(0, size - 1, particles[i].pos_y / _dx);
         }
 //
 //
-        while (_spaceTypes[getIdx(x, y - 1)] == Solid && particle.vy <= 1 &&
+        while (_spaceTypes[getIdx(x, y - 1)] == Solid && particles[i].vy <= 1 &&
                _spaceTypes[getIdx(x, y + 1)] == Empty) {
-            particle.pos_y += dx;
-            particle.vy += g * dt;
-            y = roundValue(0, size - 1, particle.pos_y / dx);
+            particles[i].pos_y += _dx;
+            particles[i].vy += g * dt;
+            y = roundValue(0, size - 1, particles[i].pos_y / _dx);
         }
 //
 
@@ -703,6 +719,6 @@ double Solver::getAlpha() {
 
 void Solver::kernel1D_createAdditionalSolid(int size, int *indices, int *_spaceTypes) {
     for (int i = 0; i < size; ++i) {
-        spaceTypes[indices[i]] = Solid;
+        _spaceTypes[indices[i]] = Solid;
     }
 }
