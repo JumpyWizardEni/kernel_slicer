@@ -108,55 +108,62 @@ void Solver::performStep(int w, int h, double *input, double *output) {
         }
     }
 
-    if (isEnd) {
-        return;
-    }
+    if (!isEnd) {
+        pressureResidual = rhs;
+        int preconKernel = sub_domains * sub_domains;
+        kernel1D_calcPreconditioner(preconKernel);
+        kernel1D_applyPreconditionerForward(preconKernel);
+        kernel1D_applyPreconditionerBackward(preconKernel);
 
-    pressureResidual = rhs;
+        s = z;
 
-    kernel1D_calcPreconditioner(4);
+        dotResult = 0.0;
+        kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
+        double sygma = dotResult;
 
-    applyPreconditioner();
-
-    s = z;
-
-    double sygma = 0.0;
-    kernel1D_dotProduct(size * size, z.data(), pressureResidual.data(), &sygma);
-    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
+        for (int i = 0; i < PCG_MAX_ITERS; ++i) {
 
 
-        kernel2D_applyPressureMatrix(size, size, spaceTypes.data(), s.data(), pressX.data(), pressY.data(), z.data(), press_diag.data());
-        double alpha = 0.0;
-        kernel1D_dotProduct(size * size, z.data(), s.data(), &alpha);
-        alpha = sygma / alpha;
+            kernel2D_applyPressureMatrix(size, size, spaceTypes.data(), s.data(), pressX.data(), pressY.data(),
+                                         z.data(),
+                                         press_diag.data());
+            dotResult = 0.0;
+            kernel1D_dotProduct(size * size, z.data(), s.data());
+            double alpha = dotResult;
 
-        int endFlag = 1;
+            alpha = sygma / alpha;
 
-        for (int j = 0; j < size * size; ++j) {
-            pressure[j] += alpha * s[j];
-            pressureResidual[j] -= alpha * z[j];
-            if (std::abs(pressureResidual[j]) > TOL) {
-                endFlag = 0;
+            int endFlag = 1;
+
+            for (int j = 0; j < size * size; ++j) {
+                pressure[j] += alpha * s[j];
+                pressureResidual[j] -= alpha * z[j];
+                if (std::abs(pressureResidual[j]) > TOL) {
+                    endFlag = 0;
+                }
             }
+
+            if (endFlag) {
+                break;
+            }
+            kernel1D_applyPreconditionerForward(preconKernel);
+            kernel1D_applyPreconditionerBackward(preconKernel);
+
+            dotResult = 0.0;
+            kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
+            double sygma_new = dotResult;
+
+            double beta = sygma_new / sygma;
+
+            for (int j = 0; j < size * size; ++j) {
+                s[j] = z[j] + beta * s[j];
+            }
+
+            sygma = sygma_new;
         }
-
-        if (endFlag) {
-            break;
-        }
-
-        applyPreconditioner();
-
-        double sygma_new = 0.0;
-        kernel1D_dotProduct(size * size, z.data(), pressureResidual.data(), &sygma_new);
-
-        double beta = sygma_new / sygma;
-
-        for (int j = 0; j < size * size; ++j) {
-            s[j] = z[j] + beta * s[j];
-        }
-
-        sygma = sygma_new;
     }
+
+
 
     //Обновить скорости с помощью давлений
 
@@ -332,57 +339,58 @@ void Solver::kernel1D_calcPreconditioner(int _size) {
     }
 }
 
-void Solver::applyPreconditioner() {
-    int overlap = 2;
-    int sub_domains = 5;
-    int subgrid_size = size / sub_domains;
-    //10
+void Solver::kernel1D_applyPreconditionerBackward(int _size) {
+
 //#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
-    for (int k = 0; k < sub_domains * sub_domains; k++) {
-        int k_x = k % sub_domains;
-        int k_y = k / sub_domains;
-        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
-            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
-//    for (int j = 0; j < size; ++j) {
-//        for (int i = 0; i < size; ++i) {
-            if (i >= 0 && j >= 0 && i < size && j < size) {
-                if (spaceTypes[getIdx(i, j)] == Fluid) {
-                    double t = pressureResidual[getIdx(i, j)]
-                               - pressX[getIdx(i - 1, j)]
-                                 * preconditioner[getIdx(i - 1, j)] * q[getIdx(i - 1, j)]
-                               - pressY[getIdx(i, j - 1)]
-                                 * preconditioner[getIdx(i, j - 1)] * q[getIdx(i, j - 1)];
-                    q[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+//    for (int k = 0; k < _size; k++) {
+//        int k_x = k % sub_domains;
+//        int k_y = k / sub_domains;
+//        for (int j = (k_y + 1) * subgrid_size + overlap - 1; j >= k_y * subgrid_size - overlap; --j) {
+//            for (int i = (k_x + 1) * subgrid_size + overlap - 1; i >= (k_x) * subgrid_size - overlap; --i) {
+    for (int j = size - 1; j >= 0; --j) {
+        for (int i = size - 1; i >= 0; --i) {
+                if (i >= 0 && j >= 0 && i < size && j < size) {
+                    if (spaceTypes[getIdx(i, j)] == Fluid) {
+                        double t = q[getIdx(i, j)]
+                                   - pressX[getIdx(i, j)]
+                                     * preconditioner[getIdx(i, j)] * z[getIdx(i + 1, j)]
+                                   - pressY[getIdx(i, j)]
+                                     * preconditioner[getIdx(i, j)] * z[getIdx(i, j + 1)];
+                        z[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+//                    }
                 }
-            }
             }
         }
     }
-//#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
-    for (int k = 0; k < sub_domains * sub_domains; k++) {
-        int k_x = k % sub_domains;
-        int k_y = k / sub_domains;
-        for (int j = (k_y + 1) * subgrid_size + overlap - 1; j >= k_y * subgrid_size - overlap; --j) {
-            for (int i = (k_x + 1) * subgrid_size + overlap - 1; i >= (k_x) * subgrid_size - overlap; --i) {
-//    for (int j = size - 1; j >= 0; --j) {
-//        for (int i = size - 1; i >= 0; --i) {
-            if (i >= 0 && j >= 0 && i < size && j < size) {
-                if (spaceTypes[getIdx(i, j)] == Fluid) {
-                    double t = q[getIdx(i, j)]
-                               - pressX[getIdx(i, j)]
-                                 * preconditioner[getIdx(i, j)] * z[getIdx(i + 1, j)]
-                               - pressY[getIdx(i, j)]
-                                 * preconditioner[getIdx(i, j)] * z[getIdx(i, j + 1)];
-                    z[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+}
+
+void Solver::kernel1D_applyPreconditionerForward(
+        int _size) {//#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
+//    for (int k = 0; k < _size; k++) {
+//        int k_x = k % sub_domains;
+//        int k_y = k / sub_domains;
+//        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
+//            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
+    for (int j = 0; j < size; ++j) {
+        for (int i = 0; i < size; ++i) {
+                if (i >= 0 && j >= 0 && i < size && j < size) {
+                    if (spaceTypes[getIdx(i, j)] == Fluid) {
+                        double t = pressureResidual[getIdx(i, j)]
+                                   - pressX[getIdx(i - 1, j)]
+                                     * preconditioner[getIdx(i - 1, j)] * q[getIdx(i - 1, j)]
+                                   - pressY[getIdx(i, j - 1)]
+                                     * preconditioner[getIdx(i, j - 1)] * q[getIdx(i, j - 1)];
+                        q[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
+//                    }
                 }
-            }
             }
         }
     }
 }
 
 
-void Solver::kernel2D_applyPressureMatrix(int h, int w, int *spaceTypes, double *s, double *pressX, double *pressY, double *z,
+void Solver::kernel2D_applyPressureMatrix(int h, int w, int *spaceTypes, double *s, double *pressX, double *pressY,
+                                          double *z,
                                           double *press_diag) {
     for (int j = 0; j < h; ++j) {
         for (int i = 0; i < w; ++i) {
@@ -400,9 +408,9 @@ void Solver::kernel2D_applyPressureMatrix(int h, int w, int *spaceTypes, double 
     }
 }
 
-void Solver::kernel1D_dotProduct(int size, double *first, double *second, double *result) {
+void Solver::kernel1D_dotProduct(int size, double *first, double *second) {
     for (int i = 0; i < size; ++i) {
-        *result += first[i] * second[i];
+        dotResult += first[i] * second[i];
     }
 }
 

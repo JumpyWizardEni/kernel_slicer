@@ -89,7 +89,7 @@ public:
 
     void kernel2D_addForces(int h, int w, double *v, double a, int *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
 
-    void applyPreconditioner();
+    void kernel1D_applyPreconditionerBackward(int _size);
 
     void kernel1D_calcPreconditioner(int _size);
 
@@ -97,7 +97,7 @@ public:
 
     double getVelocityY(double *vy, int i, int j);
 
-    void kernel1D_dotProduct(int size, double *first, double *second, double *result);
+    void kernel1D_dotProduct(int size, double *first, double *second);
 
     double pow(double value);
 
