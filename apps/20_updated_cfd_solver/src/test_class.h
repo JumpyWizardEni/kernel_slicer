@@ -45,6 +45,8 @@ public:
     int sub_domains = 5;
     int subgrid_size = 0;
 
+    vector<int> isEnd;
+
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
     vector<double> pressure;
     vector<double> pressureResidual;
@@ -78,7 +80,7 @@ public:
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
 
-    virtual void performStep(int pSize, Particle *input, Particle *output);
+    virtual void performStep(int pSize, Particle *input __attribute__((size("pSize"))), Particle *output __attribute__((size("pSize"))));
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
     void kernel1D_countTimeDelta(int size, const double *p_vx, const double *p_vy);
@@ -161,6 +163,16 @@ public:
     void kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes, int *counts, double *pressure);
 
     void kernel1D_applyPreconditionerForward(int _size);
+
+    void kernel1D_changeParticlesSize(int i);
+
+    void kernel1D_changeSearchVector(int size, double beta);
+
+    void kernel1D_checkZeroRhs(int size);
+
+    void kernel1D_changePressure(int size, double alpha);
+
+    int _isEnd(int isEnd, bool b);
 };
 
 

@@ -12,6 +12,7 @@ Solver::Solver() = default;
 
 void Solver::setParameters(int grid_num, double _dx, vector<int> &_solid_indices) {
     size = grid_num;
+    subgrid_size = size / sub_domains;
     pressure.resize(size * size, 0);
     gridInfo.resize(size * size, GridPICInfo());
     spaceTypes.resize(size * size, Empty);
@@ -31,6 +32,7 @@ void Solver::setParameters(int grid_num, double _dx, vector<int> &_solid_indices
     counts.resize(size * size, 0);
     vx.resize(size * (size + 1), 0);
     vy.resize(size * (size + 1), 0);
+    isEnd.resize(1, 0);
     dx = _dx;
     solid_indices = _solid_indices;
 
@@ -66,6 +68,7 @@ double Solver::getVelocityY(double *vy, int i, int j) {
 }
 
 void Solver::performStep(int pSize, Particle *input, Particle *output) {
+    //Обнулить все нужные массивы
     int _s = size * size;
     kernel1D_fillWithZeros_double(_s, rhs.data());
     kernel1D_fillWithZeros_double(_s, pressureResidual.data());
@@ -78,10 +81,13 @@ void Solver::performStep(int pSize, Particle *input, Particle *output) {
     kernel1D_fillWithZeros_double(_s, diff_vx.data());
     kernel1D_fillWithZeros_double(_s, q.data());
     kernel1D_fillWithZeros(_s, counts.data());
+
+    //Перенести частицы в буферы
     particlesSize = pSize;
-    particles.resize(pSize);
+    kernel1D_changeParticlesSize(1);
     int copy_size = sizeof(Particle) * particlesSize;
     memcpy(particles.data(), input, copy_size);
+
     //Создаем MAC сетку по частицам
     kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
     kernel1D_createFluidFromParticles(particlesSize);
@@ -120,22 +126,18 @@ void Solver::performStep(int pSize, Particle *input, Particle *output) {
 
     kernel1D_fillWithZeros_double(size * size, pressure.data());
 
-    bool isEnd = true;
-    for (int i = 0; i < size * size; ++i) {
-        if (std::abs(rhs[i]) > TOL) {
-            isEnd = false;
-            break;
-        }
-    }
+    isEnd[0] = 1;
+    kernel1D_checkZeroRhs(size * size);
 
-    if (!isEnd) {
-        pressureResidual = rhs;
+    int d_copy = sizeof(double) * size * size;
+    if (!isEnd[0]) {
+        memcpy(pressureResidual.data(), rhs.data(), d_copy);
         int preconKernel = sub_domains * sub_domains;
         kernel1D_calcPreconditioner(preconKernel);
         kernel1D_applyPreconditionerForward(preconKernel);
         kernel1D_applyPreconditionerBackward(preconKernel);
 
-        s = z;
+        memcpy(s.data(), z.data(), d_copy);
 
         dotResult = 0.0;
         kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
@@ -153,17 +155,11 @@ void Solver::performStep(int pSize, Particle *input, Particle *output) {
 
             alpha = sygma / alpha;
 
-            int endFlag = 1;
+            isEnd[0] = 1;
 
-            for (int j = 0; j < size * size; ++j) {
-                pressure[j] += alpha * s[j];
-                pressureResidual[j] -= alpha * z[j];
-                if (std::abs(pressureResidual[j]) > TOL) {
-                    endFlag = 0;
-                }
-            }
+            kernel1D_changePressure(size * size, alpha);
 
-            if (endFlag) {
+            if (isEnd[0]) {
                 break;
             }
             kernel1D_applyPreconditionerForward(preconKernel);
@@ -175,9 +171,7 @@ void Solver::performStep(int pSize, Particle *input, Particle *output) {
 
             double beta = sygma_new / sygma;
 
-            for (int j = 0; j < size * size; ++j) {
-                s[j] = z[j] + beta * s[j];
-            }
+            kernel1D_changeSearchVector(size * size, beta);
 
             sygma = sygma_new;
         }
@@ -202,6 +196,30 @@ void Solver::performStep(int pSize, Particle *input, Particle *output) {
     kernel1D_advectParticles(particlesSize, diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
     copy_size = sizeof(Particle) * particlesSize;
     memcpy(output, particles.data(), copy_size);
+}
+
+void Solver::kernel1D_changePressure(int size, double alpha) {
+    for (int j = 0; j < size; ++j) {
+        pressure[j] += alpha * s[j];
+        pressureResidual[j] -= alpha * z[j];
+        if (std::abs(pressureResidual[j]) > TOL) {
+            isEnd[0] = 0;
+        }
+    }
+}
+
+void Solver::kernel1D_checkZeroRhs(int size) {
+    for (int i = 0; i < size; ++i) {
+        if (std::abs(rhs[i]) > TOL) {
+            isEnd[0] = 0;
+        }
+    }
+}
+
+void Solver::kernel1D_changeSearchVector(int size, double beta) {
+    for (int j = 0; j < size; ++j) {
+        s[j] = z[j] + beta * s[j];
+    }
 }
 
 
@@ -330,13 +348,13 @@ void Solver::kernel2D_fillPressureMatrix(int h, int w, int *_spaceTypes, double 
 //MIC Preconditioner matrix
 void Solver::kernel1D_calcPreconditioner(int _size) {
 
-//    for (int k = 0; k < _size; k++) {
-//        int k_x = k % sub_domains;
-//        int k_y = k / sub_domains;
-//        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
-//            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
+    for (int k = 0; k < _size; k++) {
+        int k_x = k % sub_domains;
+        int k_y = k / sub_domains;
+        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
+            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
+//    for (int j = 0; j < size; ++j) {
+//        for (int i = 0; i < size; ++i) {
             if (i >= 0 && j >= 0 && i < size && j < size) {
                 double safe = 0.25;
                 double tau = 0.97;
@@ -353,7 +371,7 @@ void Solver::kernel1D_calcPreconditioner(int _size) {
                     }
                     preconditioner[getIdx(i, j)] = 1 / std::sqrt(e);
                 }
-//                }
+                }
             }
         }
     }
@@ -362,13 +380,13 @@ void Solver::kernel1D_calcPreconditioner(int _size) {
 void Solver::kernel1D_applyPreconditionerBackward(int _size) {
 
 //#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
-//    for (int k = 0; k < _size; k++) {
-//        int k_x = k % sub_domains;
-//        int k_y = k / sub_domains;
-//        for (int j = (k_y + 1) * subgrid_size + overlap - 1; j >= k_y * subgrid_size - overlap; --j) {
-//            for (int i = (k_x + 1) * subgrid_size + overlap - 1; i >= (k_x) * subgrid_size - overlap; --i) {
-    for (int j = size - 1; j >= 0; --j) {
-        for (int i = size - 1; i >= 0; --i) {
+    for (int k = 0; k < _size; k++) {
+        int k_x = k % sub_domains;
+        int k_y = k / sub_domains;
+        for (int j = (k_y + 1) * subgrid_size + overlap - 1; j >= k_y * subgrid_size - overlap; --j) {
+            for (int i = (k_x + 1) * subgrid_size + overlap - 1; i >= (k_x) * subgrid_size - overlap; --i) {
+//    for (int j = size - 1; j >= 0; --j) {
+//        for (int i = size - 1; i >= 0; --i) {
                 if (i >= 0 && j >= 0 && i < size && j < size) {
                     if (spaceTypes[getIdx(i, j)] == Fluid) {
                         double t = q[getIdx(i, j)]
@@ -377,7 +395,7 @@ void Solver::kernel1D_applyPreconditionerBackward(int _size) {
                                    - pressY[getIdx(i, j)]
                                      * preconditioner[getIdx(i, j)] * z[getIdx(i, j + 1)];
                         z[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
-//                    }
+                    }
                 }
             }
         }
@@ -385,14 +403,15 @@ void Solver::kernel1D_applyPreconditionerBackward(int _size) {
 }
 
 void Solver::kernel1D_applyPreconditionerForward(
-        int _size) {//#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
-//    for (int k = 0; k < _size; k++) {
-//        int k_x = k % sub_domains;
-//        int k_y = k / sub_domains;
-//        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
-//            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
-    for (int j = 0; j < size; ++j) {
-        for (int i = 0; i < size; ++i) {
+        int _size) {
+    //#pragma omp parallel for num_threads(sub_domains) schedule(dynamic) default(shared)
+    for (int k = 0; k < _size; k++) {
+        int k_x = k % sub_domains;
+        int k_y = k / sub_domains;
+        for (int j = k_y * subgrid_size - overlap; j < (k_y + 1) * subgrid_size + overlap; ++j) {
+            for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
+//    for (int j = 0; j < size; ++j) {
+//        for (int i = 0; i < size; ++i) {
                 if (i >= 0 && j >= 0 && i < size && j < size) {
                     if (spaceTypes[getIdx(i, j)] == Fluid) {
                         double t = pressureResidual[getIdx(i, j)]
@@ -401,7 +420,7 @@ void Solver::kernel1D_applyPreconditionerForward(
                                    - pressY[getIdx(i, j - 1)]
                                      * preconditioner[getIdx(i, j - 1)] * q[getIdx(i, j - 1)];
                         q[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
-//                    }
+                    }
                 }
             }
         }
@@ -733,5 +752,20 @@ double Solver::getAlpha() {
 void Solver::kernel1D_createAdditionalSolid(int size, int *indices, int *_spaceTypes) {
     for (int i = 0; i < size; ++i) {
         _spaceTypes[indices[i]] = Solid;
+    }
+}
+
+void Solver::kernel1D_changeParticlesSize(int t) {
+    particles.resize(particlesSize);
+    for (int i = 0; i < t; ++i) {
+
+    }
+}
+
+int Solver::_isEnd(int isEnd, bool b) {
+    if (b) {
+        return 0;
+    } else {
+        return isEnd;
     }
 }
