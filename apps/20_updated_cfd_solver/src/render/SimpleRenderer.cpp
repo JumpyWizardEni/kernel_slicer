@@ -12,7 +12,8 @@ SimpleRenderer::SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size) 
 }
 
 void SimpleRenderer::saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
-                               std::vector<Solver::Particle> particles, RenderMode mode) {
+                               std::vector<Solver::Particle> &particles,
+                               RenderMode mode) {
     std::vector<unsigned char> image;
     image.resize(grid_num * grid_num * 4 * grid_px_size * grid_px_size, 0);
 

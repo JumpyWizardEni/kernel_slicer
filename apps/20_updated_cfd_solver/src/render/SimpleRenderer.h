@@ -5,9 +5,6 @@
 #include <vector>
 #include "src/test_class.h"
 #include "IRenderer.h"
-#define Solid 0
-#define Empty 1
-#define Fluid 2
 
 class SimpleRenderer: public IRenderer {
 
@@ -59,8 +56,9 @@ public:
 
     SimpleRenderer(int _grid_px_size, int _grid_num, int grid_size);
 
-    void saveImage(const std::string &image_name, std::vector<int> &spaceTypes,
-                   std::vector<Solver::Particle>, RenderMode mode) override;
+    void
+    saveImage(const std::string &image_name, std::vector<int> &spaceTypes, std::vector<Solver::Particle> &particles,
+              RenderMode mode) override;
 
     void fillEmptyImage(vector<unsigned char> &image, std::vector<int> &spaceTypes) const;
 
