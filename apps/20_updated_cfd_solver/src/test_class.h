@@ -83,11 +83,11 @@ public:
     virtual void performStep(int pSize, Particle *input __attribute__((size("pSize"))), Particle *output __attribute__((size("pSize"))));
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
-    void kernel1D_countTimeDelta(int size, const float *p_vx, const float *p_vy);
+    void kernel1D_countTimeDelta(int _size, const float *p_vx, const float *p_vy);
 
 
     float
-    interpolate(float q, float *q_copy, float x, float y, int i, int j, float dx, int size); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
+    interpolate(float _q, float *q_copy, float x, float y, int i, int j, float _dx, int _size); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
 
     void kernel2D_addForces(int h, int w, float *v, float a, int *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
 
@@ -103,8 +103,7 @@ public:
 
     float pow(float value);
 
-    void kernel2D_applyPressureMatrix(int h, int w, int *spaceTypes, float *s, float *pressX, float *pressY, float *z,
-                                      float *press_diag);
+    void kernel2D_applyPressureMatrix(int h, int w);
 
     // Все формулы записаны в стандартных кооридинатах, однако при индексации ось Y направлена вниз
     int getIdx(int i, int j);
@@ -115,7 +114,7 @@ public:
 
     void checkDivergence();
 
-    void kernel1D_fillWithZeros_float(int size, float *v);
+    void kernel1D_fillWithZeros_float(int _size, float *v);
 
     float kFunc(float x, float y);
 
@@ -138,9 +137,9 @@ public:
 
     void kernel2D_updateVelocities(int h, int w, int *_spaceTypes, float *_pressure, float *_vx, float *_vy);
 
-    void kernel2D_dirichleCondition(int h, int w, int *spaceTypes, float *_pressure, float *_vx, float *_vy);
+    void kernel2D_dirichleCondition(int h, int w, int *_spaceTypes, float *_pressure, float *_vx, float *_vy);
 
-    void kernel1D_clearSpaceTypes(int size, int *spaceTypes);
+    void kernel1D_clearSpaceTypes(int _size, int *_spaceTypes);
 
     void kernel2D_createSolid(int h, int w, int *_spaceTypes);
 
@@ -154,11 +153,11 @@ public:
     kernel2D_countDiffXY(int h, int w, float *_vx, float *_vy, float *_prev_vx, float *_prev_vy, float *_diff_vx,
                          float *_diff_vy);
 
-    void kernel1D_createAdditionalSolid(int size, int *indices, int *_spaceTypes);
+    void kernel1D_createAdditionalSolid(int _size, int *indices, int *_spaceTypes);
 
-    void kernel1D_fillWithZeros(int size, int *v);
+    void kernel1D_fillWithZeros(int _size, int *v);
 
-    void kernel1D_countParticlesNum(int size);
+    void kernel1D_countParticlesNum(int _size);
 
     void kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes, int *counts, float *pressure);
 
@@ -166,13 +165,11 @@ public:
 
     void kernel1D_changeParticlesSize(int i);
 
-    void kernel1D_changeSearchVector(int size, float beta);
+    void kernel1D_changeSearchVector(int _size, float beta);
 
-    void kernel1D_checkZeroRhs(int size);
+    void kernel1D_checkZeroRhs(int _size);
 
-    void kernel1D_changePressure(int size, float alpha);
-
-    int _isEnd(int isEnd, bool b);
+    void kernel1D_changePressure(int _size, float alpha);
 };
 
 
