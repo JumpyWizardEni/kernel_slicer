@@ -70,18 +70,18 @@ float Solver::getVelocityY(float *vy, int i, int j) {
 
 void Solver::performStep(int pSize, Particle *input, Particle *output) {
     //Обнулить все нужные массивы
-    int _s = size * size;
-    kernel1D_fillWithZeros_float(_s, rhs.data());
-    kernel1D_fillWithZeros_float(_s, pressureResidual.data());
-    kernel1D_fillWithZeros_float(_s, press_diag.data());
-    kernel1D_fillWithZeros_float(_s, pressX.data());
-    kernel1D_fillWithZeros_float(_s, pressY.data());
-    kernel1D_fillWithZeros_float(_s, z.data());
-    kernel1D_fillWithZeros_float(_s, s.data());
-    kernel1D_fillWithZeros_float(_s, diff_vy.data());
-    kernel1D_fillWithZeros_float(_s, diff_vx.data());
-    kernel1D_fillWithZeros_float(_s, q.data());
-    kernel1D_fillWithZeros(_s, counts.data());
+//    int _s = size * size;
+//    kernel1D_fillWithZeros_float(_s, rhs.data());
+//    kernel1D_fillWithZeros_float(_s, pressureResidual.data());
+//    kernel1D_fillWithZeros_float(_s, press_diag.data());
+//    kernel1D_fillWithZeros_float(_s, pressX.data());
+//    kernel1D_fillWithZeros_float(_s, pressY.data());
+//    kernel1D_fillWithZeros_float(_s, z.data());
+//    kernel1D_fillWithZeros_float(_s, s.data());
+//    kernel1D_fillWithZeros_float(_s, diff_vy.data());
+//    kernel1D_fillWithZeros_float(_s, diff_vx.data());
+//    kernel1D_fillWithZeros_float(_s, q.data());
+//    kernel1D_fillWithZeros(_s, counts.data());
 
     //Перенести частицы в буферы
     particlesSize = pSize;
@@ -90,109 +90,109 @@ void Solver::performStep(int pSize, Particle *input, Particle *output) {
     memcpy(particles.data(), input, copy_size);
 
     //Создаем MAC сетку по частицам
-    kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
-    kernel1D_createFluidFromParticles(particlesSize);
-    kernel2D_createSolid(size, size, spaceTypes.data());
-    kernel1D_createAdditionalSolid(solid_indices.size(), solid_indices.data(), spaceTypes.data());
-
-    //Переносим скорости
-    kernel1D_fillWithZeros_float(size * (size + 1), vx.data());
-    kernel1D_fillWithZeros_float(size * (size + 1), vy.data());
-    kernel1D_particlesToGridVelocity(particlesSize);
-    kernel2D_meanVelocities(size, size, vx.data(), vy.data());
-
-    //Считаем новый dt
-    maximum_vel = -1;
-    kernel1D_countTimeDelta(size * (size + 1), vx.data(), vy.data());
-    maximum_vel = std::sqrt(maximum_vel);
-    maximum_vel += std::sqrt(5 * dx * std::abs(g)); // чтобы не было деления на 0
-    dt = 5 * dx / maximum_vel;
-    //Сохраняем старые значения скоростей
-
-    memcpy(prev_vx.data(), vx.data(), sizeof(float) * size * (size + 1));
-    memcpy(prev_vy.data(), vy.data(), sizeof(float) * size * (size + 1));
-
-    //Добавляем силу притяжиния
-    kernel2D_addForces(size, size - 1, vy.data(), g, spaceTypes.data());
-
-    //Зануляем скорости на границах
-    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-
-//project
-    //Считаем вектор производных скоростей
-    kernel2D_calcNegativeDivergence(size, size, spaceTypes.data(), rhs.data(), vx.data(), vy.data());
-    //Заполняем матрицу коэффициентов
-    kernel2D_fillPressureMatrix(size, size, spaceTypes.data(), press_diag.data(), pressX.data(), pressY.data());
-    //Основной алгоритм
-
-    kernel1D_fillWithZeros_float(size * size, pressure.data());
-
-    isEnd[0] = 1;
-    kernel1D_checkZeroRhs(size * size);
-
-    int d_copy = sizeof(float) * size * size;
-    if (!isEnd[0]) {
-        memcpy(pressureResidual.data(), rhs.data(), d_copy);
-        int preconKernel = sub_domains * sub_domains;
-        kernel1D_calcPreconditioner(preconKernel);
-        kernel1D_applyPreconditionerForward(preconKernel);
-        kernel1D_applyPreconditionerBackward(preconKernel);
-
-        memcpy(s.data(), z.data(), d_copy);
-
-        dotResult = 0.0;
-        kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
-        float sygma = dotResult;
-
-        for (int i = 0; i < PCG_MAX_ITERS; ++i) {
-
-
-            kernel2D_applyPressureMatrix(size, size);
-            dotResult = 0.0;
-            kernel1D_dotProduct(size * size, z.data(), s.data());
-            float alpha = dotResult;
-
-            alpha = sygma / alpha;
-
-            isEnd[0] = 1;
-
-            kernel1D_changePressure(size * size, alpha);
-
-            if (isEnd[0]) {
-                break;
-            }
-            kernel1D_applyPreconditionerForward(preconKernel);
-            kernel1D_applyPreconditionerBackward(preconKernel);
-
-            dotResult = 0.0;
-            kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
-            float sygma_new = dotResult;
-
-            float beta = sygma_new / sygma;
-
-            kernel1D_changeSearchVector(size * size, beta);
-
-            sygma = sygma_new;
-        }
-    }
-
-
-
-    //Обновить скорости с помощью давлений
-
-    kernel1D_countParticlesNum(particlesSize);
-    kernel2D_changePressureWithParticles(size, size, spaceTypes.data(), counts.data(), pressure.data());
-
-    kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-    checkDivergence();
-
-    //Снова зануляем во избежании ошибок
-    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-
-    // перенос частиц
-    kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
-                         diff_vy.data());
-    kernel1D_advectParticles(particlesSize, diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
+//    kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
+//    kernel1D_createFluidFromParticles(particlesSize);
+//    kernel2D_createSolid(size, size, spaceTypes.data());
+//    kernel1D_createAdditionalSolid(solid_indices.size(), solid_indices.data(), spaceTypes.data());
+//
+//    //Переносим скорости
+//    kernel1D_fillWithZeros_float(size * (size + 1), vx.data());
+//    kernel1D_fillWithZeros_float(size * (size + 1), vy.data());
+//    kernel1D_particlesToGridVelocity(particlesSize);
+//    kernel2D_meanVelocities(size, size, vx.data(), vy.data());
+//
+//    //Считаем новый dt
+//    maximum_vel = -1;
+//    kernel1D_countTimeDelta(size * (size + 1), vx.data(), vy.data());
+//    maximum_vel = std::sqrt(maximum_vel);
+//    maximum_vel += std::sqrt(5 * dx * std::abs(g)); // чтобы не было деления на 0
+//    dt = 5 * dx / maximum_vel;
+//    //Сохраняем старые значения скоростей
+//
+//    memcpy(prev_vx.data(), vx.data(), sizeof(float) * size * (size + 1));
+//    memcpy(prev_vy.data(), vy.data(), sizeof(float) * size * (size + 1));
+//
+//    //Добавляем силу притяжиния
+//    kernel2D_addForces(size, size - 1, vy.data(), g, spaceTypes.data());
+//
+//    //Зануляем скорости на границах
+//    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+//
+////project
+//    //Считаем вектор производных скоростей
+//    kernel2D_calcNegativeDivergence(size, size, spaceTypes.data(), rhs.data(), vx.data(), vy.data());
+//    //Заполняем матрицу коэффициентов
+//    kernel2D_fillPressureMatrix(size, size, spaceTypes.data(), press_diag.data(), pressX.data(), pressY.data());
+//    //Основной алгоритм
+//
+//    kernel1D_fillWithZeros_float(size * size, pressure.data());
+//
+//    isEnd[0] = 1;
+//    kernel1D_checkZeroRhs(size * size);
+//
+//    int d_copy = sizeof(float) * size * size;
+//    if (!isEnd[0]) {
+//        memcpy(pressureResidual.data(), rhs.data(), d_copy);
+//        int preconKernel = sub_domains * sub_domains;
+//        kernel1D_calcPreconditioner(preconKernel);
+//        kernel1D_applyPreconditionerForward(preconKernel);
+//        kernel1D_applyPreconditionerBackward(preconKernel);
+//
+//        memcpy(s.data(), z.data(), d_copy);
+//
+//        dotResult = 0.0;
+//        kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
+//        float sygma = dotResult;
+//
+//        for (int i = 0; i < PCG_MAX_ITERS; ++i) {
+//
+//
+//            kernel2D_applyPressureMatrix(size, size);
+//            dotResult = 0.0;
+//            kernel1D_dotProduct(size * size, z.data(), s.data());
+//            float alpha = dotResult;
+//
+//            alpha = sygma / alpha;
+//
+//            isEnd[0] = 1;
+//
+//            kernel1D_changePressure(size * size, alpha);
+//
+//            if (isEnd[0]) {
+//                break;
+//            }
+//            kernel1D_applyPreconditionerForward(preconKernel);
+//            kernel1D_applyPreconditionerBackward(preconKernel);
+//
+//            dotResult = 0.0;
+//            kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
+//            float sygma_new = dotResult;
+//
+//            float beta = sygma_new / sygma;
+//
+//            kernel1D_changeSearchVector(size * size, beta);
+//
+//            sygma = sygma_new;
+//        }
+//    }
+//
+//
+//
+//    //Обновить скорости с помощью давлений
+//
+//    kernel1D_countParticlesNum(particlesSize);
+//    kernel2D_changePressureWithParticles(size, size, spaceTypes.data(), counts.data(), pressure.data());
+//
+//    kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+//    checkDivergence();
+//
+//    //Снова зануляем во избежании ошибок
+//    kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
+//
+//    // перенос частиц
+//    kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
+//                         diff_vy.data());
+//    kernel1D_advectParticles(particlesSize, diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
     copy_size = sizeof(Particle) * particlesSize;
     memcpy(output, particles.data(), copy_size);
 }
