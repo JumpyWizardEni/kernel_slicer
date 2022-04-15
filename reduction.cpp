@@ -29,6 +29,31 @@ std::string kslicer::KernelInfo::ReductionAccess::GetOp(std::shared_ptr<IShaderC
 
 }
 
+std::string kslicer::KernelInfo::ReductionAccess::GetOp2(std::shared_ptr<IShaderCompiler> pShaderCC) const
+{
+  switch(type)
+  {
+    case REDUCTION_TYPE::ADD_ONE:
+    case REDUCTION_TYPE::ADD:
+    case REDUCTION_TYPE::SUB:
+    case REDUCTION_TYPE::SUB_ONE:
+    {
+      return "+";
+    }
+    break;
+    case REDUCTION_TYPE::MUL:
+      return "*";
+    break;
+    case REDUCTION_TYPE::FUNC:
+      return pShaderCC->ReplaceCallFromStdNamespace(funcName, dataType);
+    break;
+
+    default:
+      return "+";
+    break;
+  };
+}
+
 std::string kslicer::KernelInfo::ReductionAccess::GetInitialValue(bool isGLSL) const // best in nomination shitty code
 {
   if(isGLSL)
@@ -252,6 +277,44 @@ std::string kslicer::KernelInfo::ReductionAccess::GetAtomicImplCode(bool isGLSL)
         res.push_back(firstSimb);  
     }
   }
+
+  return res;
+}
+
+
+std::string kslicer::KernelInfo::ReductionAccess::GetSubgroupOpCode(bool isGLSL) const
+{
+  std::string res = "atomic_unknown"; 
+
+  if(!isGLSL)
+    return res;
+
+  switch(type)
+  {
+    case REDUCTION_TYPE::ADD_ONE:
+    case REDUCTION_TYPE::ADD:
+    res = "subgroupAdd";
+    break;
+
+    case REDUCTION_TYPE::SUB:
+    case REDUCTION_TYPE::SUB_ONE:
+    res = "subgroupAdd";
+    break;
+
+    case REDUCTION_TYPE::FUNC:
+    {
+      if(funcName == "min" || funcName == "std::min") res = "subgroupMin";
+      if(funcName == "max" || funcName == "std::max") res = "subgroupMax";
+    }
+    break;
+
+    case REDUCTION_TYPE::MUL:
+    res = "subgroupMul";
+    break;
+
+    default:
+    break;
+  };
 
   return res;
 }

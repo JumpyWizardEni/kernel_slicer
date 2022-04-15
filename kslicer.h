@@ -171,8 +171,8 @@ namespace kslicer
       REDUCTION_TYPE type;
       std::string    rightExpr;
       std::string    leftExpr; // altered left expression (arrays and other ... )
-      bool           leftIsArray = false;
-      uint32_t       arraySize   = 0;
+      bool           leftIsArray  = false;
+      uint32_t       arraySize    = 0;
       std::string    arrayIndex;
       std::string    arrayName;
       std::vector<std::string> arrayTmpBufferNames;
@@ -182,9 +182,11 @@ namespace kslicer
       std::string    tmpVarName = "UnknownReductionOutput";
       std::string    GetInitialValue(bool isGLSL)  const;
       std::string    GetOp(std::shared_ptr<IShaderCompiler> pShaderCC) const;
+      std::string    GetOp2(std::shared_ptr<IShaderCompiler> pShaderCC) const;
 
       bool           SupportAtomicLastStep()        const;
       std::string    GetAtomicImplCode(bool isGLSL) const;
+      std::string    GetSubgroupOpCode(bool isGLSL) const;
       size_t         GetSizeOfDataType()            const;
     };
     
@@ -243,6 +245,7 @@ namespace kslicer
 
     uint32_t wgSize[3] = {256,1,1};              ///<! workgroup size for the case when setting wgsize with spec constant is not allowed
     uint32_t warpSize  = 32;                     ///<! warp size in which we can rely on to omit sync in reduction and e.t.c.
+    bool     enableSubGroups = false;            ///<! enable subgroup operations for reduction and e.t.c.
 
     bool      isIndirect = false;                ///<! IPV pattern; if loop size is defined by class member variable or vector size, we interpret it as indirect dispatching
     uint32_t  indirectBlockOffset = 0;           ///<! IPV pattern; for such kernels we have to know some offset in indirect buffer for thread blocks number (use int4 data for each kernel)
@@ -1047,6 +1050,7 @@ namespace kslicer
   std::string CleanTypeName(const std::string& a_str);
   
   bool IsInExcludedFolder(const std::string& fileName, const std::vector<std::string>& a_excludeFolderList);
+  std::unordered_set<std::string> GetAllServiceKernels();
 }
 
 template <typename Cont, typename Pred>

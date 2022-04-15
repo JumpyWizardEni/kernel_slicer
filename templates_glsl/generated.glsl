@@ -6,6 +6,9 @@
 {% if Kernel.NeedTexArray %}
 #extension GL_EXT_nonuniform_qualifier : require
 {% endif %}
+{% if Kernel.UseSubGroups %}
+#extension GL_KHR_shader_subgroup_arithmetic: enable
+{% endif %}
 
 #include "common_generated.h"
 
