@@ -29,29 +29,31 @@ message(STATUS ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(OpenMP)
 find_package(Vulkan)
-#include_directories(${Vulkan_INCLUDE_DIR})
-#include_directories("../volk" "../LiteMath")
-#link_directories("../volk")
+include_directories(${Vulkan_INCLUDE_DIR})
+include_directories("../volk" "../LiteMath")
+link_directories("../volk")
 
-#include_directories(../vkutils)
+include_directories(../vkutils)
 
-#find_package(glfw3 REQUIRED)
-#include_directories(${GLFW_INCLUDE_DIRS})
-
+find_package(glfw3 REQUIRED)
+include_directories(${GLFW_INCLUDE_DIRS})
+add_compile_definitions(USE_VOLK)
 #uncomment this to detect broken memory problems via gcc sanitizers
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -fsanitize-address-use-after-scope -fno-omit-frame-pointer -fsanitize=leak -fsanitize=undefined -fsanitize=bounds-strict")
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp -fPIC")
 #
-#set(VKUTILS_NEW_SRC ../vkutils/vk_copy.cpp
-#        ../vkutils/vk_utils.cpp
-#        ../vkutils/vk_buffers.cpp
-#        ../vkutils/vk_descriptor_sets.cpp
-#        ../vkutils/vk_images.cpp
-#        ../vkutils/vk_swapchain.cpp
-#        ../vkutils/vk_pipeline.cpp
-#        ../vkutils/geom/vk_mesh.cpp
-#        ../vkutils/geom/cmesh.cpp)
+set(VKUTILS_NEW_SRC ../vkutils/vk_copy.cpp
+        ../vkutils/vk_utils.cpp
+        ../vkutils/vk_buffers.cpp
+        ../vkutils/vk_descriptor_sets.cpp
+        ../vkutils/vk_images.cpp
+        ../vkutils/vk_swapchain.cpp
+        ../vkutils/vk_context.cpp
+        ../vkutils/vk_pipeline.cpp
+        ../vkutils/geom/vk_mesh.cpp
+        ../vkutils/geom/cmesh.cpp
+        ../vkutils/vk_alloc_simple.cpp)
 
 #find_package(CxxTest REQUIRED)
 #if(CXXTEST_FOUND)
@@ -65,7 +67,8 @@ add_executable(testapp
         src/main.cpp
         include/stb_image_write.h
         src/render/SimpleRenderer.cpp
-        src/conf/Configuration.cpp src/conf/Configuration.h src/render/VulkanRender.cpp src/render/VulkanRender.h src/render/IRenderer.h src/conf/ConfigurationBuilder.cpp src/conf/ConfigurationBuilder.h)
+        src/conf/Configuration.cpp src/conf/Configuration.h src/render/VulkanRender.cpp src/render/VulkanRender.h src/render/IRenderer.h src/conf/ConfigurationBuilder.cpp src/conf/ConfigurationBuilder.h
+        src/test_class_generated.cpp src/test_class_generated.h src/test_class_generated_ds.cpp src/test_class_generated_init.cpp ${VKUTILS_NEW_SRC})
 
 set_target_properties(testapp PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-#target_link_libraries(testapp LINK_PUBLIC ${Vulkan_LIBRARY} OpenMP::OpenMP_CXX volk dl glfw)
+target_link_libraries(testapp LINK_PUBLIC ${Vulkan_LIBRARY} OpenMP::OpenMP_CXX volk dl glfw)
