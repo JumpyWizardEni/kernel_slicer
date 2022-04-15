@@ -1,6 +1,7 @@
 #include "Configuration.h"
 #include <cmath>
 #include <iostream>
+#include <src/test_class_generated.h>
 
 //"Случайное" вещ. число в пределах от min до max
 double Configuration::randfrom(double min, double max) {
@@ -9,18 +10,35 @@ double Configuration::randfrom(double min, double max) {
     return min + (rand() / div);
 }
 
+std::shared_ptr<Solver> CreateSolver_Generated(vk_utils::VulkanContext a_ctx, size_t a_maxThreadsGenerated);
 
 void Configuration::start() {
-    solver = new Solver();
-    renderer = new SimpleRenderer(px_per_cell, grid_num, 1);
+#ifndef NDEBUG
+    bool enableValidationLayers = true;
+#else
+    bool enableValidationLayers = false;
+#endif
+
+    if (mode == GPU) {
+        auto ctx = vk_utils::globalContextGet(enableValidationLayers, 0);
+        solver = CreateSolver_Generated(ctx, grid_num);
+    } else {
+        solver = std::make_shared<Solver>();
+
+    }
+    renderer = new SimpleRenderer(px_per_cell, grid_num, grid_size);
+
     fillSolverData();
+
+    solver->CommitDeviceData();
+
     simulate();
 }
 
 void Configuration::fillSolverData() {
-    double dx = (double) grid_size / grid_num;
-    vector<Solver::Particle> particles;
-    int particles_size = 0;
+    dx = (double) grid_size / grid_num;
+    spaceTypes.resize(grid_num * grid_num, 0);
+    particles_size = 0;
     for (int i = 0; i < water_indices.size(); ++i) {
         for (int k = 0; k < particles_per_grid; ++k) {
             double r1 = randfrom(0.4, 0.6);
@@ -34,30 +52,15 @@ void Configuration::fillSolverData() {
 
     }
 
-    vector<double> vx(grid_num * (grid_num + 1), 0);
-    vector<double> vy((grid_num + 1) * grid_num, 0);
-    vector<double> pressure(grid_num * grid_num, 0);
+    spaceTypes.resize(grid_num, grid_num);
 
-    solver->size = grid_num;
-    solver->particlesSize = particles_size;
-    solver->particles = particles;
-    solver->dx = dx;
-    solver->vx = vx;
-    solver->vy = vy;
-    solver->pressure = pressure;
-    solver->solid_indices = std::move(solid_indices);
-
-    solver->setParameters();
+    solver->setParameters(grid_num, dx, solid_indices);
 }
 
 
 void Configuration::simulate() {
-    double dx = (double) grid_size / grid_num;
-    renderer->saveImage("images/" + std::to_string(1) + ".jpeg", solver->spaceTypes, solver->particles,
-                        RenderMode::Blobbies);
     for (int frameNum = 1; frameNum < simulation_steps; ++frameNum) {
-//        if (frameNum % 20 == 0) {
-//        }
+
         if (additional_fluid) {
 
             if (frameNum % frequency == 0 || frameNum == first) {
@@ -68,28 +71,29 @@ void Configuration::simulate() {
                         Solver::Particle p = Solver::Particle();
                         p.pos_x = additional_fluid_indices[i].first * dx + dx * r1;
                         p.pos_y = additional_fluid_indices[i].second * dx + dx * r2;
-                        solver->particles.push_back(p);
+                        particles.push_back(p);
                     }
-                    solver->particlesSize += particles_per_grid;
+                    particles_size += particles_per_grid;
 
                 }
             }
         }
         std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
-        float t = 0;
-        float t_frame = 1.0 / 60;
+        double t = 0;
+        double t_frame = 1.0 / 60;
         while (t < t_frame) {
-            solver->performStep(0, 0, nullptr, nullptr);
+            solver->performStep(particles_size, particles.data(), particles.data());
             t += solver->dt;
         }
-        renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", solver->spaceTypes, solver->particles,
+        countSpaceTypes();
+        renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", spaceTypes, particles,
                             RenderMode::Blobbies);
     }
 
 }
 
 Configuration::~Configuration() {
-    delete solver;
+    solver = nullptr;
     delete renderer;
 }
 
@@ -134,4 +138,40 @@ Configuration &Configuration::setAdditionalWater(vector<std::pair<int, int>> &in
     additional_fluid_indices = std::move(indices);
     this->frequency = frequency;
     return *this;
+}
+
+void Configuration::countSpaceTypes() {
+    for (int i = 0; i < grid_num * grid_num; ++i) {
+        spaceTypes[i] = Empty;
+    }
+    for (int i = 0; i < particles_size; ++i) {
+        int x = roundValue(0, grid_num - 1, particles[i].pos_x / dx);
+        int y = roundValue(0, grid_num - 1, particles[i].pos_y / dx);
+        spaceTypes[x + grid_num * y] = Fluid;
+    }
+    for (int j = 0; j < grid_num; ++j) {
+        for (int i = 0; i < grid_num; ++i) {
+            if (i == 0 || i == grid_num - 1 || j == 0 || j == grid_num - 1) {
+                spaceTypes[i + grid_num * j] = Solid;
+            }
+        }
+    }
+    for (auto i: solid_indices) {
+        spaceTypes[i] = Solid;
+    }
+}
+
+int Configuration::roundValue(int from, int to, double value) {
+    if (value > to) {
+        value = to;
+    }
+    if (value < from) {
+        value = from;
+    }
+
+    int f = (int) floor(value);
+    if (value - (double) f > 0.5) {
+        return (int) ceil(value);
+    }
+    return f;
 }

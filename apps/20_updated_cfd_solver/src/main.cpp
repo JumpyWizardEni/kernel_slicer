@@ -5,6 +5,7 @@ int main() {
     ConfParams params = ConfParams(1, 5, 100,
                                    1000, 4, 100, 50);
     Configuration conf = Configuration();
+    conf.mode = CPU;
     ConfigurationName confName = ConfigurationName::CircleWall;
     ConfigurationBuilder(params).build(conf, confName);
     conf.start();

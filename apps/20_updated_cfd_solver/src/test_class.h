@@ -43,7 +43,7 @@ public:
 
     int overlap = 2;
     int sub_domains = 5;
-    int subgrid_size = size / sub_domains;
+    int subgrid_size = 0;
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
     vector<double> pressure;
@@ -73,12 +73,12 @@ public:
 
     Solver();
 
-    void setParameters();
+    void setParameters(int grid_num, double _dx, vector<int> &_solid_indices);
 
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
 
-    virtual void performStep(int w, int h, double *input __attribute__((size("w", "h"))), double *output __attribute__((size("w", "h"))));
+    virtual void performStep(int pSize, Particle *input, Particle *output);
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
     void kernel1D_countTimeDelta(int size, const double *p_vx, const double *p_vy);
@@ -111,11 +111,9 @@ public:
 
     int getIdxY(int i, int j);
 
-    void resetParams();
-
     void checkDivergence();
 
-    void fillWithZeros(double *v, int size);
+    void kernel1D_fillWithZeros_double(int size, double *v);
 
     double kFunc(double x, double y);
 
@@ -156,7 +154,7 @@ public:
 
     void kernel1D_createAdditionalSolid(int size, int *indices, int *_spaceTypes);
 
-    void fillWithZeros(int *v, int size);
+    void kernel1D_fillWithZeros(int size, int *v);
 
     void kernel1D_countParticlesNum(int size);
 

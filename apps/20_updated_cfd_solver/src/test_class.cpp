@@ -10,7 +10,8 @@ using std::max;
 
 Solver::Solver() = default;
 
-void Solver::setParameters() {
+void Solver::setParameters(int grid_num, double _dx, vector<int> &_solid_indices) {
+    size = grid_num;
     pressure.resize(size * size, 0);
     gridInfo.resize(size * size, GridPICInfo());
     spaceTypes.resize(size * size, Empty);
@@ -28,6 +29,11 @@ void Solver::setParameters() {
     prev_vx.resize(size * (size + 1), 0);
     prev_vy.resize(size * (size + 1), 0);
     counts.resize(size * size, 0);
+    vx.resize(size * (size + 1), 0);
+    vy.resize(size * (size + 1), 0);
+    dx = _dx;
+    solid_indices = _solid_indices;
+
 
 }
 
@@ -59,9 +65,23 @@ double Solver::getVelocityY(double *vy, int i, int j) {
 
 }
 
-void Solver::performStep(int w, int h, double *input, double *output) {
-    resetParams();
-
+void Solver::performStep(int pSize, Particle *input, Particle *output) {
+    int _s = size * size;
+    kernel1D_fillWithZeros_double(_s, rhs.data());
+    kernel1D_fillWithZeros_double(_s, pressureResidual.data());
+    kernel1D_fillWithZeros_double(_s, press_diag.data());
+    kernel1D_fillWithZeros_double(_s, pressX.data());
+    kernel1D_fillWithZeros_double(_s, pressY.data());
+    kernel1D_fillWithZeros_double(_s, z.data());
+    kernel1D_fillWithZeros_double(_s, s.data());
+    kernel1D_fillWithZeros_double(_s, diff_vy.data());
+    kernel1D_fillWithZeros_double(_s, diff_vx.data());
+    kernel1D_fillWithZeros_double(_s, q.data());
+    kernel1D_fillWithZeros(_s, counts.data());
+    particlesSize = pSize;
+    particles.resize(pSize);
+    int copy_size = sizeof(Particle) * particlesSize;
+    memcpy(particles.data(), input, copy_size);
     //Создаем MAC сетку по частицам
     kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
     kernel1D_createFluidFromParticles(particlesSize);
@@ -69,8 +89,8 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     kernel1D_createAdditionalSolid(solid_indices.size(), solid_indices.data(), spaceTypes.data());
 
     //Переносим скорости
-    fillWithZeros(vx.data(), size * (size + 1));
-    fillWithZeros(vy.data(), size * (size + 1));
+    kernel1D_fillWithZeros_double(size * (size + 1), vx.data());
+    kernel1D_fillWithZeros_double(size * (size + 1), vy.data());
     kernel1D_particlesToGridVelocity(particlesSize);
     kernel2D_meanVelocities(size, size, vx.data(), vy.data());
 
@@ -98,7 +118,7 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     kernel2D_fillPressureMatrix(size, size, spaceTypes.data(), press_diag.data(), pressX.data(), pressY.data());
     //Основной алгоритм
 
-    fillWithZeros(pressure.data(), size * size);
+    kernel1D_fillWithZeros_double(size * size, pressure.data());
 
     bool isEnd = true;
     for (int i = 0; i < size * size; ++i) {
@@ -180,8 +200,8 @@ void Solver::performStep(int w, int h, double *input, double *output) {
     kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
                          diff_vy.data());
     kernel1D_advectParticles(particlesSize, diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
-    int copy_size = sizeof(float) * size * size;
-//    memcpy((float *)output, (float *)pressure.data(), copy_size);
+    copy_size = sizeof(Particle) * particlesSize;
+    memcpy(output, particles.data(), copy_size);
 }
 
 
@@ -464,13 +484,13 @@ void Solver::kernel1D_countParticlesNum(int size) {
     }
 }
 
-void Solver::fillWithZeros(double *v, int size) {
+void Solver::kernel1D_fillWithZeros_double(int size, double *v) {
     for (int i = 0; i < size; ++i) {
         v[i] = 0;
     }
 }
 
-void Solver::fillWithZeros(int *v, int size) {
+void Solver::kernel1D_fillWithZeros(int size, int *v) {
     for (int i = 0; i < size; ++i) {
         v[i] = 0;
     }
@@ -486,21 +506,6 @@ int Solver::getIdxY(int i, int j) {
 
 int Solver::getIdxX(int i, int j) {
     return i + (size + 1) * j;
-}
-
-void Solver::resetParams() {
-    int s = size * size;
-    fillWithZeros(rhs.data(), s);
-    fillWithZeros(pressureResidual.data(), s);
-    fillWithZeros(press_diag.data(), s);
-    fillWithZeros(pressX.data(), s);
-    fillWithZeros(pressY.data(), s);
-    fillWithZeros(z.data(), s);
-    fillWithZeros(this->s.data(), s);
-    fillWithZeros(diff_vy.data(), s);
-    fillWithZeros(diff_vx.data(), s);
-    fillWithZeros(q.data(), s);
-    fillWithZeros(counts.data(), s);
 }
 
 void Solver::checkDivergence() {
