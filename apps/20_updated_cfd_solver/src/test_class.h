@@ -9,17 +9,17 @@ class Solver {
 
 public:
     struct Particle {
-        double vx;
-        double vy;
-        double pos_x; // from 0.0 to 1.0
-        double pos_y; // from 0.0 to 1.0
+        float vx;
+        float vy;
+        float pos_x; // from 0.0 to 1.0
+        float pos_y; // from 0.0 to 1.0
     };
 
     struct GridPICInfo {
-        double sum_vx;
-        double sum_vy;
-        double weight_vx;
-        double weight_vy;
+        float sum_vx;
+        float sum_vy;
+        float weight_vx;
+        float weight_vy;
     };
 
     const int Solid = 0;
@@ -28,18 +28,18 @@ public:
 
     int size = 0; // Количество ячеек по одному направлению
     int particlesSize = 0;
-    double dotResult = 0;
+    float dotResult = 0;
     vector<Particle> particles;
     vector<GridPICInfo> gridInfo;
-    double dt = 0.033; // Меняется каждый шаг
-    double dx = 0.125; // Размер сетки в условных единицах
-    double density = 1000;
-    const double g = 9.82; // Ускорение свободного падения
+    float dt = 0.033; // Меняется каждый шаг
+    float dx = 0.125; // Размер сетки в условных единицах
+    float density = 1000;
+    const float g = 9.82; // Ускорение свободного падения
     const int PCG_MAX_ITERS = 1000; // Максимальное число итераций для PCG алгоритма
-    const double TOL = 1e-9; // epsilon для давления
-    double viscosity = 0.0001;
+    const float TOL = 1e-9; // epsilon для давления
+    float viscosity = 0.0001;
     int particles_pressure_coef = 10;//10
-    double maximum_vel = 0.0;
+    float maximum_vel = 0.0;
 
     int overlap = 2;
     int sub_domains = 5;
@@ -48,34 +48,34 @@ public:
     vector<int> isEnd;
 
     //Давление. Решаем уравнение PRESS * pressure = rhs. PRESS - симметричная матрица.
-    vector<double> pressure;
-    vector<double> pressureResidual;
-    vector<double> rhs;
-    vector<double> press_diag;
-    vector<double> pressX;
-    vector<double> pressY;
-    vector<double> preconditioner; // (size + 1) X (size + 1)
-    vector<double> q;
-    vector<double> z;
-    vector<double> s;
+    vector<float> pressure;
+    vector<float> pressureResidual;
+    vector<float> rhs;
+    vector<float> press_diag;
+    vector<float> pressX;
+    vector<float> pressY;
+    vector<float> preconditioner; // (size + 1) X (size + 1)
+    vector<float> q;
+    vector<float> z;
+    vector<float> s;
 
-    vector<double> prev_vx;
-    vector<double> prev_vy;
+    vector<float> prev_vx;
+    vector<float> prev_vy;
 
     vector<int> spaceTypes;
     vector<int> counts;
 
-    vector<double> vx; // (size + 1), size
-    vector<double> vy; // size, (size + 1)
+    vector<float> vx; // (size + 1), size
+    vector<float> vy; // size, (size + 1)
 
-    vector<double> diff_vx;
-    vector<double> diff_vy;
+    vector<float> diff_vx;
+    vector<float> diff_vy;
 
     vector<int> solid_indices;
 
     Solver();
 
-    void setParameters(int grid_num, double _dx, vector<int> &_solid_indices);
+    void setParameters(int grid_num, float _dx, vector<int> &_solid_indices);
 
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
@@ -83,28 +83,28 @@ public:
     virtual void performStep(int pSize, Particle *input __attribute__((size("pSize"))), Particle *output __attribute__((size("pSize"))));
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
-    void kernel1D_countTimeDelta(int size, const double *p_vx, const double *p_vy);
+    void kernel1D_countTimeDelta(int size, const float *p_vx, const float *p_vy);
 
 
-    double
-    interpolate(double q, double *q_copy, double x, double y, int i, int j, double dx, int size); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
+    float
+    interpolate(float q, float *q_copy, float x, float y, int i, int j, float dx, int size); // перенос некоторой величины q_copy через поле u. Решение уравнения Dq/Dt = 0
 
-    void kernel2D_addForces(int h, int w, double *v, double a, int *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
+    void kernel2D_addForces(int h, int w, float *v, float a, int *_spaceTypes); // добавляются внешние силы (в нашем случае - сила притяжения)
 
     void kernel1D_applyPreconditionerBackward(int _size);
 
     void kernel1D_calcPreconditioner(int _size);
 
-    double getVelocityX(double *vx, int i, int j);
+    float getVelocityX(float *vx, int i, int j);
 
-    double getVelocityY(double *vy, int i, int j);
+    float getVelocityY(float *vy, int i, int j);
 
-    void kernel1D_dotProduct(int size, double *first, double *second);
+    void kernel1D_dotProduct(int size, float *first, float *second);
 
-    double pow(double value);
+    float pow(float value);
 
-    void kernel2D_applyPressureMatrix(int h, int w, int *spaceTypes, double *s, double *pressX, double *pressY, double *z,
-                                      double *press_diag);
+    void kernel2D_applyPressureMatrix(int h, int w, int *spaceTypes, float *s, float *pressX, float *pressY, float *z,
+                                      float *press_diag);
 
     // Все формулы записаны в стандартных кооридинатах, однако при индексации ось Y направлена вниз
     int getIdx(int i, int j);
@@ -115,44 +115,44 @@ public:
 
     void checkDivergence();
 
-    void kernel1D_fillWithZeros_double(int size, double *v);
+    void kernel1D_fillWithZeros_float(int size, float *v);
 
-    double kFunc(double x, double y);
+    float kFunc(float x, float y);
 
-    double h2(double x);
+    float h2(float x);
 
 
 
-    int roundValue(int i, int i1, double d);
+    int roundValue(int i, int i1, float d);
 
-    double getAlpha();
+    float getAlpha();
 
     void
-    kernel1D_advectParticles(int _size, double *_diff_vx, double *_diff_vy, double *_vx, double *_vy,
+    kernel1D_advectParticles(int _size, float *_diff_vx, float *_diff_vy, float *_vx, float *_vy,
                              int *_spaceTypes);
 
-    void kernel2D_calcNegativeDivergence(int h, int w, int *_spaceTypes, double *_rhs, double *_vx, double *_vy);
+    void kernel2D_calcNegativeDivergence(int h, int w, int *_spaceTypes, float *_rhs, float *_vx, float *_vy);
 
-    void kernel2D_fillPressureMatrix(int h, int w, int *_spaceTypes, double *_press_diag, double *_pressX,
-                                     double *_pressY);
+    void kernel2D_fillPressureMatrix(int h, int w, int *_spaceTypes, float *_press_diag, float *_pressX,
+                                     float *_pressY);
 
-    void kernel2D_updateVelocities(int h, int w, int *_spaceTypes, double *_pressure, double *_vx, double *_vy);
+    void kernel2D_updateVelocities(int h, int w, int *_spaceTypes, float *_pressure, float *_vx, float *_vy);
 
-    void kernel2D_dirichleCondition(int h, int w, int *spaceTypes, double *_pressure, double *_vx, double *_vy);
+    void kernel2D_dirichleCondition(int h, int w, int *spaceTypes, float *_pressure, float *_vx, float *_vy);
 
     void kernel1D_clearSpaceTypes(int size, int *spaceTypes);
 
     void kernel2D_createSolid(int h, int w, int *_spaceTypes);
 
-    void kernel2D_meanVelocities(int h, int w, double *_vx, double *_vy);
+    void kernel2D_meanVelocities(int h, int w, float *_vx, float *_vy);
 
     void kernel1D_createFluidFromParticles(int _size);
 
     void kernel1D_particlesToGridVelocity(int _size);
 
     void
-    kernel2D_countDiffXY(int h, int w, double *_vx, double *_vy, double *_prev_vx, double *_prev_vy, double *_diff_vx,
-                         double *_diff_vy);
+    kernel2D_countDiffXY(int h, int w, float *_vx, float *_vy, float *_prev_vx, float *_prev_vy, float *_diff_vx,
+                         float *_diff_vy);
 
     void kernel1D_createAdditionalSolid(int size, int *indices, int *_spaceTypes);
 
@@ -160,17 +160,17 @@ public:
 
     void kernel1D_countParticlesNum(int size);
 
-    void kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes, int *counts, double *pressure);
+    void kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes, int *counts, float *pressure);
 
     void kernel1D_applyPreconditionerForward(int _size);
 
     void kernel1D_changeParticlesSize(int i);
 
-    void kernel1D_changeSearchVector(int size, double beta);
+    void kernel1D_changeSearchVector(int size, float beta);
 
     void kernel1D_checkZeroRhs(int size);
 
-    void kernel1D_changePressure(int size, double alpha);
+    void kernel1D_changePressure(int size, float alpha);
 
     int _isEnd(int isEnd, bool b);
 };
