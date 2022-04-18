@@ -14,6 +14,7 @@ private:
     const int Solid = 0;
     const int Empty = 1;
     const int Fluid = 2;
+    const float TOL = 1e-1;
     int grid_size = 1;
     int particles_size = 0;
     int px_per_cell = 5;
@@ -31,6 +32,7 @@ private:
     vector<std::pair<int, int>> water_indices = {};
     IRenderer *renderer = nullptr;
     std::shared_ptr<Solver> solver = nullptr;
+    std::shared_ptr<Solver> solver_cpu = nullptr; //for test
 
     void fillSolverData();
 
@@ -65,6 +67,8 @@ public:
     void countSpaceTypes();
 
     int roundValue(int from, int to, double value);
+
+    void checkValues(vector<Solver::Particle> &particles);
 };
 
 

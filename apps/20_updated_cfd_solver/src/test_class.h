@@ -31,7 +31,7 @@ public:
     float dotResult = 0;
     vector<Particle> particles;
     vector<GridPICInfo> gridInfo;
-    float dt = 0.033; // Меняется каждый шаг
+    float dt = 0.015; // Меняется каждый шаг
     float dx = 0.125; // Размер сетки в условных единицах
     float density = 1000;
     const float g = 9.82; // Ускорение свободного падения
@@ -41,8 +41,8 @@ public:
     int particles_pressure_coef = 10;//10
     float maximum_vel = 0.0;
 
-    int overlap = 2;
-    int sub_domains = 5;
+    int overlap = 6;
+    int sub_domains = 50;
     int subgrid_size = 0;
 
     vector<int> isEnd;
@@ -80,10 +80,10 @@ public:
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
 
-    virtual void performStep(int pSize, Particle *input __attribute__((size("pSize"))), Particle *output __attribute__((size("pSize"))));
+    virtual void performStep(int pSize, const Particle *input __attribute__((size("pSize"))), Particle *output __attribute__((size("pSize"))));
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
-    void kernel1D_countTimeDelta(int _size, const float *p_vx, const float *p_vy);
+    void kernel1D_countTimeDelta(int _size, float *p_vx, float *p_vy);
 
 
     float
@@ -163,7 +163,7 @@ public:
 
     void kernel1D_applyPreconditionerForward(int _size);
 
-    void kernel1D_changeParticlesSize(int i);
+    void kernel1D_changeParticlesSize(int _size);
 
     void kernel1D_changeSearchVector(int _size, float beta);
 
