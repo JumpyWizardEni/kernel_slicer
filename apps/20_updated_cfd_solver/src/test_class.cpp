@@ -10,11 +10,12 @@ using std::max;
 
 Solver::Solver() = default;
 
-void Solver::setParameters(int grid_num, float _dx, vector<int> &_solid_indices) {
+void Solver::setParameters(int grid_num, float _dx, vector<int> &_solid_indices, int pSize) {
     size = grid_num;
     subgrid_size = size / sub_domains;
     pressure.resize(size * size, 0);
-    particles.resize(1);
+    particles.resize(pSize);
+    particlesSize = pSize;
     gridInfo.resize(size * size, GridPICInfo());
     spaceTypes.resize(size * size, Empty);
     pressureResidual.resize(size * size, 0);
@@ -84,8 +85,7 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
     kernel1D_fillWithZeros(_s, counts.data());
 
     //Перенести частицы в буферы
-    particlesSize = pSize;
-    kernel1D_changeParticlesSize(pSize);
+//    kernel1D_changeParticlesSize(pSize);
     memcpy(particles.data(), input, sizeof(Particle) * particlesSize);
 
     //Создаем MAC сетку по частицам
@@ -749,7 +749,7 @@ void Solver::kernel1D_createAdditionalSolid(int _size, int *indices, int *_space
 }
 
 void Solver::kernel1D_changeParticlesSize(int t) {
-    particles.resize(0);
+    particles.resize(particlesSize);
     for (int i = 0; i < t; ++i) {
         Particle p;
         particles.push_back(p);

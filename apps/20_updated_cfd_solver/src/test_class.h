@@ -41,8 +41,8 @@ public:
     int particles_pressure_coef = 10;//10
     float maximum_vel = 0.0;
 
-    int overlap = 6;
-    int sub_domains = 50;
+    int overlap = 2;
+    int sub_domains = 2;
     int subgrid_size = 0;
 
     vector<int> isEnd;
@@ -75,7 +75,7 @@ public:
 
     Solver();
 
-    void setParameters(int grid_num, float _dx, vector<int> &_solid_indices);
+    void setParameters(int grid_num, float _dx, vector<int> &_solid_indices, int pSize);
 
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class

@@ -29,7 +29,7 @@ void Configuration::start() {
         solver_cpu = std::make_shared<Solver>();
         fillSolverData();
         solver_cpu->particles.reserve(particles_size);
-        solver_cpu->setParameters(grid_num, dx, solid_indices);
+        solver_cpu->setParameters(grid_num, dx, solid_indices, 0);
         solver->CommitDeviceData();
         solver_cpu->CommitDeviceData();
 
@@ -69,8 +69,7 @@ void Configuration::fillSolverData() {
     }
 
     spaceTypes.resize(grid_num, grid_num);
-    solver->particles.reserve(particles_size);
-    solver->setParameters(grid_num, dx, solid_indices);
+    solver->setParameters(grid_num, dx, solid_indices, particles_size);
 }
 
 
@@ -81,17 +80,17 @@ void Configuration::simulate() {
 //
 //            if (frameNum % frequency == 0 || frameNum == first) {
 //                for (int i = 0; i < additional_fluid_indices.size(); ++i) {
-                    for (int k = 0; k < particles_per_grid; ++k) {
-                        double r1 = randfrom(0.0, 1.0);
-                        double r2 = randfrom(0.0, 1.0);
-                        Solver::Particle p = Solver::Particle();
-                        p.pos_x = 0.5;
-                        p.pos_y = 0.5;
-//                        p.pos_x = additional_fluid_indices[i].first * dx + dx * r1;
-//                        p.pos_y = additional_fluid_indices[i].second * dx + dx * r2;
-                        particles.push_back(p);
-                    }
-                    particles_size += particles_per_grid;
+//                    for (int k = 0; k < particles_per_grid; ++k) {
+//                        double r1 = randfrom(0.0, 1.0);
+//                        double r2 = randfrom(0.0, 1.0);
+//                        Solver::Particle p = Solver::Particle();
+//                        p.pos_x = 0.5;
+//                        p.pos_y = 0.5;
+////                        p.pos_x = additional_fluid_indices[i].first * dx + dx * r1;
+////                        p.pos_y = additional_fluid_indices[i].second * dx + dx * r2;
+//                        particles.push_back(p);
+//                    }
+//                    particles_size += particles_per_grid;
 
 //                }
 //            }
@@ -99,8 +98,6 @@ void Configuration::simulate() {
         std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
         double t = 0;
         double t_frame = 1.0 / 60;
-        vector<float> vx_output(grid_num * (grid_num + 1));
-        vector<float> vy_output(grid_num * (grid_num + 1));
 
         while (t < t_frame) {
             if (TEST_MODE) {
