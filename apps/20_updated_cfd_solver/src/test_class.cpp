@@ -129,50 +129,47 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
     kernel1D_checkZeroRhs(size * size);
 
     int d_copy = sizeof(float) * size * size;
-    if (!isEnd[0]) {
-        memcpy(pressureResidual.data(), rhs.data(), d_copy);
-        int preconKernel = sub_domains * sub_domains;
-        kernel1D_calcPreconditioner(preconKernel);
-        kernel1D_applyPreconditionerForward(preconKernel);
-        kernel1D_applyPreconditionerBackward(preconKernel);
+//    if (!isEnd[0]) {
+    memcpy(pressureResidual.data(), rhs.data(), d_copy);
+    int preconKernel = sub_domains * sub_domains;
+    kernel1D_calcPreconditioner(preconKernel);
+    kernel1D_applyPreconditionerForward(preconKernel);
+    kernel1D_applyPreconditionerBackward(preconKernel);
 
-        memcpy(s.data(), z.data(), d_copy);
+    memcpy(s.data(), z.data(), d_copy);
 
-        dotResult = 0.0;
-        kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
-        float sygma = dotResult;
+    kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
+//    float sygma = dotResult;
 
-        for (int i = 0; i < PCG_MAX_ITERS; ++i) {
-
-
-            kernel2D_applyPressureMatrix(size, size);
-            dotResult = 0.0;
-            kernel1D_dotProduct(size * size, z.data(), s.data());
-            float alpha = dotResult;
-
-            alpha = sygma / alpha;
-
-            isEnd[0] = 1;
-
-            kernel1D_changePressure(size * size, alpha);
-
-            if (isEnd[0]) {
-                break;
-            }
-            kernel1D_applyPreconditionerForward(preconKernel);
-            kernel1D_applyPreconditionerBackward(preconKernel);
-
-            dotResult = 0.0;
-            kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
-            float sygma_new = dotResult;
-
-            float beta = sygma_new / sygma;
-
-            kernel1D_changeSearchVector(size * size, beta);
-
-            sygma = sygma_new;
-        }
-    }
+//    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
+//
+//
+//        kernel2D_applyPressureMatrix(size, size);
+//        kernel1D_dotProduct(size * size, z.data(), s.data());
+//        float alpha = dotResult;
+//
+//        alpha = sygma / alpha;
+//
+//        isEnd[0] = 1;
+//
+//        kernel1D_changePressure(size * size, alpha);
+//
+//        if (isEnd[0]) {
+//            break;
+//        }
+//        kernel1D_applyPreconditionerForward(preconKernel);
+//        kernel1D_applyPreconditionerBackward(preconKernel);
+//
+//        kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
+//        float sygma_new = dotResult;
+//
+//        float beta = sygma_new / sygma;
+//
+//        kernel1D_changeSearchVector(size * size, beta);
+//
+//        sygma = sygma_new;
+//    }
+//    }
 //
 //
 //

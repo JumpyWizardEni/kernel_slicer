@@ -41,8 +41,8 @@ public:
     int particles_pressure_coef = 10;//10
     float maximum_vel = 0.0;
 
-    int overlap = 2;
-    int sub_domains = 2;
+    int overlap = 0;
+    int sub_domains = 1;
     int subgrid_size = 0;
 
     vector<int> isEnd;

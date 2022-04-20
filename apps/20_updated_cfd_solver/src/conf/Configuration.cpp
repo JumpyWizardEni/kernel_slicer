@@ -4,8 +4,6 @@
 #include <src/test_class_generated.h>
 #include <chrono>
 
-#define TEST_MODE false
-
 //"Случайное" вещ. число в пределах от min до max
 double Configuration::randfrom(double min, double max) {
     double range = (max - min);
@@ -22,31 +20,18 @@ void Configuration::start() {
     bool enableValidationLayers = false;
 #endif
     renderer = new SimpleRenderer(px_per_cell, grid_num, grid_size);
-
-    if (TEST_MODE) {
+    if (mode == GPU) {
         auto ctx = vk_utils::globalContextGet(enableValidationLayers, 0);
-        solver = CreateSolver_Generated(ctx,grid_num);
-        solver_cpu = std::make_shared<Solver>();
-        fillSolverData();
-        solver_cpu->particles.reserve(particles_size);
-        solver_cpu->setParameters(grid_num, dx, solid_indices, 0);
-        solver->CommitDeviceData();
-        solver_cpu->CommitDeviceData();
-
+        solver = CreateSolver_Generated(ctx, grid_num);
     } else {
-        if (mode == GPU) {
-            auto ctx = vk_utils::globalContextGet(enableValidationLayers, 0);
-            solver = CreateSolver_Generated(ctx, grid_num);
-        } else {
-            solver = std::make_shared<Solver>();
-
-        }
-
-        fillSolverData();
-
-        solver->CommitDeviceData();
+        solver = std::make_shared<Solver>();
 
     }
+
+    fillSolverData();
+
+    solver->CommitDeviceData();
+
     simulate();
 
 }
@@ -96,33 +81,25 @@ void Configuration::simulate() {
 //            }
 //        }
         std::cout << "Current frame: " + std::to_string(frameNum) << std::endl;
+        std::string modeS = "CPU";
+        if (mode == GPU) {
+            modeS = "GPU";
+        }
+
         double t = 0;
         double t_frame = 1.0 / 60;
-
         while (t < t_frame) {
-            if (TEST_MODE) {
-                std::cout << "CPU: " << std::endl;
-                std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-                solver_cpu->performStep(particles_size, particles.data(), particles.data());
-                std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-                std::cout << "Perform time  = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
-            }
-            if (mode == GPU) {
-                std::cout << "GPU: " << std::endl;
-            } else {
-                std::cout << "CPU: " << std::endl;
-            }
+            std::cout << modeS + ": " << std::endl;
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
             solver->performStep(particles_size, particles.data(), particles.data());
             std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-            std::cout << "Perform time  = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
+            std::cout << "Perform time  = "
+                      << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]"
+                      << std::endl;
             t += solver->dt;
         }
-        if (TEST_MODE) {
-//            checkValues(particles);
-        }
         countSpaceTypes();
-        renderer->saveImage("images/" + std::to_string(frameNum + 1) + ".jpeg", spaceTypes, particles,
+        renderer->saveImage("images_" + modeS + "/" + std::to_string(frameNum + 1) + ".jpeg", spaceTypes, particles,
                             RenderMode::Blobbies);
     }
 
@@ -219,8 +196,9 @@ void Configuration::checkValues(vector<Solver::Particle> &particles) {
         Particle &p2 = cpu_particles[i];
         if (std::abs(p1.vx - p2.vx) > TOL || std::abs(p1.vy - p2.vy) > TOL || std::abs(p1.pos_x - p2.pos_x) > TOL ||
             std::abs(p1.pos_y - p2.pos_y) > TOL) {
-            std::cout << "Check failed: " << "vx: " << p1.vx << ", " << p2.vx<<", vy: " << p1.vy << ", " << p2.vy << ", pos_x: ";
-            std::cout << p1.pos_x << ", " << p2.pos_x<< ", pos_y: " << p1.pos_y << ", " << p2.pos_y<<std::endl;
+            std::cout << "Check failed: " << "vx: " << p1.vx << ", " << p2.vx << ", vy: " << p1.vy << ", " << p2.vy
+                      << ", pos_x: ";
+            std::cout << p1.pos_x << ", " << p2.pos_x << ", pos_y: " << p1.pos_y << ", " << p2.pos_y << std::endl;
         }
     }
 }
