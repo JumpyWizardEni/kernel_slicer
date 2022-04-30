@@ -87,10 +87,13 @@ void Configuration::simulate() {
         }
         double t = 0;
         double t_frame = 1.0 / 60;
+        std::vector<int> pSize(grid_num * grid_num);
         while (t < t_frame) {
             std::cout << modeS + ": " << std::endl;
             std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-            solver->performStep(particles_size, particles.data(), particles.data());
+            solver->performStep(grid_num * grid_num, particles_size, particles.data(), particles.data());
+            float max = getMax(pSize);
+            std::cout << max << std::endl;
             std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
             std::cout << "Perform time  = "
                       << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]"
@@ -186,4 +189,14 @@ int Configuration::roundValue(int from, int to, double value) {
         return (int) ceil(value);
     }
     return f;
+}
+
+float Configuration::getMax(vector<int> &vector) {
+    int max = 0;
+    for (auto i : vector) {
+        if (i > max) {
+            max = i;
+        }
+    }
+    return max;
 }

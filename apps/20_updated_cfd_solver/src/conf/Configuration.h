@@ -67,6 +67,8 @@ public:
     void countSpaceTypes();
 
     int roundValue(int from, int to, double value);
+
+    float getMax(vector<int> &vector);
 };
 
 

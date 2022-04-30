@@ -71,7 +71,7 @@ float Solver::getVelocityY(float *vy, int i, int j) {
 
 }
 
-void Solver::performStep(int pSize, const Particle *input, Particle *output) {
+void Solver::performStep(int cSize, int pSize, const Particle *input, Particle *output) {
     //Обнулить все нужные массивы
     int _s = size * size;
     kernel1D_fillWithZeros_float(_s, rhs.data());
@@ -119,14 +119,14 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
     kernel2D_addForces(size, size - 1, vy.data(), g, spaceTypes.data());
 //    //Зануляем скорости на границах
     kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-//
-//project
-    //Считаем вектор производных скоростей
+////
+////project
+//    //Считаем вектор производных скоростей
     kernel2D_calcNegativeDivergence(size, size, spaceTypes.data(), rhs.data(), vx.data(), vy.data());
-//    Заполняем матрицу коэффициентов
+////    Заполняем матрицу коэффициентов
     kernel2D_fillPressureMatrix(size, size, spaceTypes.data(), press_diag.data(), pressX.data(), pressY.data());
-//    Основной алгоритм
-
+////    Основной алгоритм
+//
     kernel1D_fillWithZeros_float(_s, pressure.data());
 
     kernel1D_checkZeroRhs(_s);
@@ -141,47 +141,47 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
 //
     memcpy(s.data(), z.data(), d_copy);
 //
-    dotResult = 0.0;
     kernel1D_dotProduct(_s, z.data(), pressureResidual.data());
-
-    float sygma = dotResult;
-    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
-
-
-        kernel2D_applyPressureMatrix(size, size);
-        dotResult = 0.0;
-
-        kernel1D_dotProduct(_s, z.data(), s.data());
-        float alpha = dotResult;
-
-        alpha = sygma / alpha;
-
-        kernel1D_changePressure(_s, alpha);
-
-        kernel1D_applyPreconditionerForward(preconKernel);
-        kernel1D_applyPreconditionerBackward(preconKernel);
-        dotResult = 0.0;
-
-        kernel1D_dotProduct(_s, z.data(), pressureResidual.data());
-        float sygma_new = dotResult;
-
-        float beta = sygma_new / sygma;
-
-        kernel1D_changeSearchVector(_s, beta);
-
-        sygma = sygma_new;
-    }
+    //
+//    kernel1D_sygma(1);
+//    float sygma = dotResult;
+//    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
+//
+//
+//        kernel2D_applyPressureMatrix(size, size);
+//        dotResult = 0.0;
+//
+//        kernel1D_dotProduct(_s, z.data(), s.data());
+//        float alpha = dotResult;
+//
+//        alpha = sygma / alpha;
+//
+//        kernel1D_changePressure(_s, alpha);
+//
+//        kernel1D_applyPreconditionerForward(preconKernel);
+//        kernel1D_applyPreconditionerBackward(preconKernel);
+//        dotResult = 0.0;
+//
+//        kernel1D_dotProduct(_s, z.data(), pressureResidual.data());
+//        float sygma_new = dotResult;
+//
+//        float beta = sygma_new / sygma;
+//
+//        kernel1D_changeSearchVector(_s, beta);
+//
+//        sygma = sygma_new;
+//    }
 //    }
 //
 //
 //
 ////    //Обновить скорости с помощью давлений
 ////
-    kernel1D_countParticlesNum(pSize);
+    kernel2D_countParticlesNum(size, size, pSize);
     kernel2D_changePressureWithParticles(size, size, spaceTypes.data(), counts.data(), pressure.data());
-////
+//////
     kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-//    checkDivergence();
+////    checkDivergence();
 ////
 ////    //Снова зануляем во избежании ошибок
     kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
@@ -441,8 +441,9 @@ void Solver::kernel2D_applyPressureMatrix(int h, int w) {
     }
 }
 
-void Solver::kernel1D_dotProduct(int size, float *first, float *second) {
-    for (int i = 0; i < size; ++i) {
+void Solver::kernel1D_dotProduct(int _size, float *first, float *second) {
+    dotResult = 0.0;
+    for (int i = 0; i < _size; ++i) {
         dotResult += first[i] * second[i];
     }
 }
@@ -489,11 +490,17 @@ void Solver::kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes,
     }
 }
 
-void Solver::kernel1D_countParticlesNum(int _size) {
-    for (int i = 0; i < _size; ++i) {
-        int x = roundValue(1, Solver::size - 2, particles[i].pos_x / dx);
-        int y = roundValue(1, Solver::size - 2, particles[i].pos_y / dx);
-        counts[getIdx(x, y)]++;
+void Solver::kernel2D_countParticlesNum(int h, int w, int pSize) {
+    for (int j = 0; j < h; ++j) {
+        for (int i = 0; i < w; ++i) {
+            for (int p_i = 0; p_i < pSize; p_i++) {
+                int x = roundValue(1, Solver::size - 2, particles[p_i].pos_x / dx);
+                int y = roundValue(1, Solver::size - 2, particles[p_i].pos_y / dx);
+                if (x == j && i == y) {
+                    counts[getIdx(x, y)] = counts[getIdx(x, y)] + 1;
+                }
+            }
+        }
     }
 }
 
@@ -755,4 +762,11 @@ void Solver::kernel1D_changeParticlesSize(int t) {
         Particle p;
         particles.push_back(p);
     }
+}
+
+void Solver::kernel1D_sygma(int i) {
+    sygma = dotResult;
+    for (int j = 0; j < i; ++j) {
+    }
+
 }

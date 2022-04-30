@@ -297,7 +297,7 @@ void ConfigurationBuilder::simple(Configuration &conf, ConfParams &params) {
     int grid_num = params.grid_num;
     for (int x = 1; x < grid_num - 1; ++x) {
         for (int y = 1; y < grid_num - 1; ++y) {
-            if (x >= round(grid_num * 0.5) && x <= round (grid_num * 0.7) && y >= round(grid_num * 0.5) && y <= round (grid_num * 0.7))   {
+            if (x >= round(grid_num * 0.1) && x <= round (grid_num * 0.9) && y >= round(grid_num * 0.1) && y <= round (grid_num * 0.7))   {
                 waterIndices.emplace_back(x, y);
             }
         }

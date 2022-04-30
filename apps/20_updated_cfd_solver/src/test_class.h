@@ -40,8 +40,8 @@ public:
     int particles_pressure_coef = 10;//10
     float maximum_vel = 0.0;
 
-    int overlap = 6;
-    int sub_domains = 10;
+    int overlap = 1;
+    int sub_domains = 2;
     int subgrid_size = 0;
 
     vector<int> isEnd;
@@ -79,7 +79,7 @@ public:
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
 
-    virtual void performStep(int pSize, const Particle *input, Particle *output);
+    virtual void performStep(int cSize, int pSize, const Particle *input __attribute__((size("pSize"))), Particle *output __attribute__((size("pSize"))));
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
     void kernel1D_countTimeDelta(int _size, float *p_vx, float *p_vy);
@@ -98,7 +98,7 @@ public:
 
     float getVelocityY(float *vy, int i, int j);
 
-    void kernel1D_dotProduct(int size, float *first, float *second);
+    void kernel1D_dotProduct(int _size, float *first, float *second);
 
     float pow(float value);
 
@@ -156,7 +156,7 @@ public:
 
     void kernel1D_fillWithZeros(int _size, int *v);
 
-    void kernel1D_countParticlesNum(int _size);
+    void kernel2D_countParticlesNum(int h, int w, int pSize);
 
     void kernel2D_changePressureWithParticles(int h, int w, int *spaceTypes, int *counts, float *pressure);
 
@@ -169,6 +169,10 @@ public:
     void kernel1D_checkZeroRhs(int _size);
 
     void kernel1D_changePressure(int _size, float alpha);
+
+    void kernel1D_sygma(int i);
+
+    float sygma;
 };
 
 
