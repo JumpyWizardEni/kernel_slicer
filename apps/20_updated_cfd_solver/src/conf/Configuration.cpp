@@ -85,7 +85,6 @@ void Configuration::simulate() {
         if (mode == GPU) {
             modeS = "GPU";
         }
-
         double t = 0;
         double t_frame = 1.0 / 60;
         while (t < t_frame) {
@@ -187,18 +186,4 @@ int Configuration::roundValue(int from, int to, double value) {
         return (int) ceil(value);
     }
     return f;
-}
-
-void Configuration::checkValues(vector<Solver::Particle> &particles) {
-    std::vector<Solver::Particle> &cpu_particles = solver_cpu->particles;
-    for (int i = 0; i < particles_size; ++i) {
-        Particle &p1 = particles[i];
-        Particle &p2 = cpu_particles[i];
-        if (std::abs(p1.vx - p2.vx) > TOL || std::abs(p1.vy - p2.vy) > TOL || std::abs(p1.pos_x - p2.pos_x) > TOL ||
-            std::abs(p1.pos_y - p2.pos_y) > TOL) {
-            std::cout << "Check failed: " << "vx: " << p1.vx << ", " << p2.vx << ", vy: " << p1.vy << ", " << p2.vy
-                      << ", pos_x: ";
-            std::cout << p1.pos_x << ", " << p2.pos_x << ", pos_y: " << p1.pos_y << ", " << p2.pos_y << std::endl;
-        }
-    }
 }

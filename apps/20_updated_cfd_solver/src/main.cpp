@@ -3,13 +3,13 @@
 
 int main() {
     ConfParams params = ConfParams(1, 5, 32,
-                                   3, 4, 100, 50);
+                                   30, 4, 100, 50);
 
     //CPU
     {
         Configuration conf_CPU = Configuration();
         conf_CPU.mode = CPU;
-        ConfigurationName confName = ConfigurationName::CircleWall;
+        ConfigurationName confName = ConfigurationName::Simple;
         ConfigurationBuilder(params).build(conf_CPU, confName);
         conf_CPU.start();
     }
@@ -18,7 +18,7 @@ int main() {
     {
         Configuration conf_GPU = Configuration();
         conf_GPU.mode = GPU;
-        ConfigurationName confName = ConfigurationName::CircleWall;
+        ConfigurationName confName = ConfigurationName::Simple;
         ConfigurationBuilder(params).build(conf_GPU, confName);
         conf_GPU.start();
     }

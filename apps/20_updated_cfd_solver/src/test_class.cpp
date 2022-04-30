@@ -15,7 +15,6 @@ void Solver::setParameters(int grid_num, float _dx, vector<int> &_solid_indices,
     subgrid_size = size / sub_domains;
     pressure.resize(size * size, 0);
     particles.resize(pSize);
-    particlesSize = pSize;
     gridInfo.resize(size * size, GridPICInfo());
     spaceTypes.resize(size * size, Empty);
     pressureResidual.resize(size * size, 0);
@@ -37,6 +36,9 @@ void Solver::setParameters(int grid_num, float _dx, vector<int> &_solid_indices,
     isEnd.resize(1, 0);
     dx = _dx;
     solid_indices = _solid_indices;
+    if (solid_indices.size() == 0) {
+        solid_indices.push_back(1);
+    }
 
 
 }
@@ -83,21 +85,22 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
     kernel1D_fillWithZeros_float(_s, diff_vx.data());
     kernel1D_fillWithZeros_float(_s, q.data());
     kernel1D_fillWithZeros(_s, counts.data());
-
     //Перенести частицы в буферы
-//    kernel1D_changeParticlesSize(pSize);
-    memcpy(particles.data(), input, sizeof(Particle) * particlesSize);
+    int pCopySize = sizeof(Particle) * pSize;
+    memcpy(particles.data(), input, pCopySize);
 
     //Создаем MAC сетку по частицам
-    kernel1D_clearSpaceTypes(size * size, spaceTypes.data());
-    kernel1D_createFluidFromParticles(particlesSize);
+    kernel1D_clearSpaceTypes(_s, spaceTypes.data());
+    kernel1D_createFluidFromParticles(pSize);
     kernel2D_createSolid(size, size, spaceTypes.data());
     kernel1D_createAdditionalSolid(solid_indices.size(), solid_indices.data(), spaceTypes.data());
 //
+
 //    //Переносим скорости
-    kernel1D_fillWithZeros_float(size * (size + 1), vx.data());
-    kernel1D_fillWithZeros_float(size * (size + 1), vy.data());
-    kernel1D_particlesToGridVelocity(particlesSize);
+    int _s_vel = size * (size + 1);
+    kernel1D_fillWithZeros_float(_s_vel, vx.data());
+    kernel1D_fillWithZeros_float(_s_vel, vy.data());
+    kernel1D_particlesToGridVelocity(pSize);
     kernel2D_meanVelocities(size, size, vx.data(), vy.data());
 //
 //    //Считаем новый dt
@@ -106,10 +109,11 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
 //    maximum_vel = std::sqrt(maximum_vel);
 //    maximum_vel += std::sqrt(5 * dx * std::abs(g)); // чтобы не было деления на 0
 //    dt = 5 * dx / maximum_vel;
-//    //Сохраняем старые значения скоростей
+    //Сохраняем старые значения скоростей
 //
-    memcpy(prev_vx.data(), vx.data(), sizeof(float) * size * (size + 1));
-    memcpy(prev_vy.data(), vy.data(), sizeof(float) * size * (size + 1));
+    int velCopySize = sizeof(float) * _s_vel;
+    memcpy(prev_vx.data(), vx.data(), velCopySize);
+    memcpy(prev_vy.data(), vy.data(), velCopySize);
 //
 //    //Добавляем силу притяжиния
     kernel2D_addForces(size, size - 1, vy.data(), g, spaceTypes.data());
@@ -123,63 +127,61 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
     kernel2D_fillPressureMatrix(size, size, spaceTypes.data(), press_diag.data(), pressX.data(), pressY.data());
 //    Основной алгоритм
 
-    kernel1D_fillWithZeros_float(size * size, pressure.data());
+    kernel1D_fillWithZeros_float(_s, pressure.data());
 
-    isEnd[0] = 1;
-    kernel1D_checkZeroRhs(size * size);
-
-    int d_copy = sizeof(float) * size * size;
+    kernel1D_checkZeroRhs(_s);
+//
+    int d_copy = sizeof(float) * _s;
 //    if (!isEnd[0]) {
     memcpy(pressureResidual.data(), rhs.data(), d_copy);
     int preconKernel = sub_domains * sub_domains;
     kernel1D_calcPreconditioner(preconKernel);
     kernel1D_applyPreconditionerForward(preconKernel);
     kernel1D_applyPreconditionerBackward(preconKernel);
-
+//
     memcpy(s.data(), z.data(), d_copy);
+//
+    dotResult = 0.0;
+    kernel1D_dotProduct(_s, z.data(), pressureResidual.data());
 
-    kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
-//    float sygma = dotResult;
+    float sygma = dotResult;
+    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
 
-//    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
-//
-//
-//        kernel2D_applyPressureMatrix(size, size);
-//        kernel1D_dotProduct(size * size, z.data(), s.data());
-//        float alpha = dotResult;
-//
-//        alpha = sygma / alpha;
-//
-//        isEnd[0] = 1;
-//
-//        kernel1D_changePressure(size * size, alpha);
-//
-//        if (isEnd[0]) {
-//            break;
-//        }
-//        kernel1D_applyPreconditionerForward(preconKernel);
-//        kernel1D_applyPreconditionerBackward(preconKernel);
-//
-//        kernel1D_dotProduct(size * size, z.data(), pressureResidual.data());
-//        float sygma_new = dotResult;
-//
-//        float beta = sygma_new / sygma;
-//
-//        kernel1D_changeSearchVector(size * size, beta);
-//
-//        sygma = sygma_new;
-//    }
+
+        kernel2D_applyPressureMatrix(size, size);
+        dotResult = 0.0;
+
+        kernel1D_dotProduct(_s, z.data(), s.data());
+        float alpha = dotResult;
+
+        alpha = sygma / alpha;
+
+        kernel1D_changePressure(_s, alpha);
+
+        kernel1D_applyPreconditionerForward(preconKernel);
+        kernel1D_applyPreconditionerBackward(preconKernel);
+        dotResult = 0.0;
+
+        kernel1D_dotProduct(_s, z.data(), pressureResidual.data());
+        float sygma_new = dotResult;
+
+        float beta = sygma_new / sygma;
+
+        kernel1D_changeSearchVector(_s, beta);
+
+        sygma = sygma_new;
+    }
 //    }
 //
 //
 //
 ////    //Обновить скорости с помощью давлений
 ////
-    kernel1D_countParticlesNum(particlesSize);
+    kernel1D_countParticlesNum(pSize);
     kernel2D_changePressureWithParticles(size, size, spaceTypes.data(), counts.data(), pressure.data());
 ////
     kernel2D_updateVelocities(size - 1, size - 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
-////    checkDivergence();
+//    checkDivergence();
 ////
 ////    //Снова зануляем во избежании ошибок
     kernel2D_dirichleCondition(size + 1, size + 1, spaceTypes.data(), pressure.data(), vx.data(), vy.data());
@@ -187,16 +189,18 @@ void Solver::performStep(int pSize, const Particle *input, Particle *output) {
 ////    // перенос частиц
     kernel2D_countDiffXY(size, size, vx.data(), vy.data(), prev_vx.data(), prev_vy.data(), diff_vx.data(),
                          diff_vy.data());
-    kernel1D_advectParticles(particlesSize, diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
-    memcpy(output, particles.data(), sizeof(Particle) * particlesSize);
+    kernel1D_advectParticles(pSize, diff_vx.data(), diff_vy.data(), vx.data(), vy.data(), spaceTypes.data());
+    memcpy(output, particles.data(), pCopySize);
 }
 
 void Solver::kernel1D_changePressure(int _size, float alpha) {
     for (int j = 0; j < _size; ++j) {
-        pressure[j] += alpha * s[j];
-        pressureResidual[j] -= alpha * z[j];
-        if (std::abs(pressureResidual[j]) > TOL) {
-            isEnd[0] = 0;
+        if (isEnd[0] == 0) {
+            pressure[j] += alpha * s[j];
+            pressureResidual[j] -= alpha * z[j];
+            if (std::abs(pressureResidual[j]) > TOL) {
+                isEnd[0] = 1;
+            }
         }
     }
 }
@@ -250,16 +254,16 @@ float Solver::interpolate(float _q, float *q_copy, float x, float y, int i, int 
     float w3 = (w_x_3 - w_x) / 6;
 
     float q_j_1 = w0 * q_copy[i - 1 + _size * (j - 1)] + w1 * q_copy[i + _size * (j - 1)] +
-                   w2 * q_copy[i + 1 + _size * (j - 1)] + w3 * q_copy[i + 2 + _size * (j - 1)];
+                  w2 * q_copy[i + 1 + _size * (j - 1)] + w3 * q_copy[i + 2 + _size * (j - 1)];
 
     float q_j = w0 * q_copy[i - 1 + _size * j] + w1 * q_copy[i + _size * j] +
-                 w2 * q_copy[i + 1 + _size * j] + w3 * q_copy[i + 2 + _size * j];
+                w2 * q_copy[i + 1 + _size * j] + w3 * q_copy[i + 2 + _size * j];
 
     float q_j1 = w0 * q_copy[i - 1 + _size * (j + 1)] + w1 * q_copy[i + _size * (j + 1)] +
-                  w2 * q_copy[i + 1 + _size * (j + 1)] + w3 * q_copy[i + 2 + _size * (j + 1)];
+                 w2 * q_copy[i + 1 + _size * (j + 1)] + w3 * q_copy[i + 2 + _size * (j + 1)];
 
     float q_j2 = w0 * q_copy[i - 1 + _size * (j + 2)] + w1 * q_copy[i + _size * (j + 2)] +
-                  w2 * q_copy[i + 1 + _size * (j + 2)] + w3 * q_copy[i + 2 + _size * (j + 2)];
+                 w2 * q_copy[i + 1 + _size * (j + 2)] + w3 * q_copy[i + 2 + _size * (j + 2)];
 
     //По y
     float w_y_2 = w_y * w_y;
@@ -347,22 +351,22 @@ void Solver::kernel1D_calcPreconditioner(int _size) {
             for (int i = k_x * subgrid_size - overlap; i < (k_x + 1) * subgrid_size + overlap; ++i) {
 //    for (int j = 0; j < size; ++j) {
 //        for (int i = 0; i < size; ++i) {
-            if (i >= 0 && j >= 0 && i < size && j < size) {
-                float safe = 0.25;
-                float tau = 0.97;
-                if (spaceTypes[getIdx(i, j)] == Fluid) {
-                    float e = press_diag[getIdx(i, j)]
-                               - pow(pressX[getIdx(i - 1, j)] * preconditioner[getIdx(i - 1, j)])
-                               - pow(pressY[getIdx(i, j - 1)] * preconditioner[getIdx(i, j - 1)])
-                               - tau * (pressX[getIdx(i - 1, j)] * pressY[getIdx(i - 1, j)] *
-                                        pow(preconditioner[getIdx(i - 1, j)])
-                                        + pressY[getIdx(i, j - 1)] * pressX[getIdx(i, j - 1)] *
-                                          pow(preconditioner[getIdx(i, j - 1)]));
-                    if (e < safe * press_diag[getIdx(i, j)]) {
-                        e = press_diag[getIdx(i, j)];
+                if (i >= 0 && j >= 0 && i < size && j < size) {
+                    float safe = 0.25;
+                    float tau = 0.97;
+                    if (spaceTypes[getIdx(i, j)] == Fluid) {
+                        float e = press_diag[getIdx(i, j)]
+                                  - pow(pressX[getIdx(i - 1, j)] * preconditioner[getIdx(i - 1, j)])
+                                  - pow(pressY[getIdx(i, j - 1)] * preconditioner[getIdx(i, j - 1)])
+                                  - tau * (pressX[getIdx(i - 1, j)] * pressY[getIdx(i - 1, j)] *
+                                           pow(preconditioner[getIdx(i - 1, j)])
+                                           + pressY[getIdx(i, j - 1)] * pressX[getIdx(i, j - 1)] *
+                                             pow(preconditioner[getIdx(i, j - 1)]));
+                        if (e < safe * press_diag[getIdx(i, j)]) {
+                            e = press_diag[getIdx(i, j)];
+                        }
+                        preconditioner[getIdx(i, j)] = 1 / std::sqrt(e);
                     }
-                    preconditioner[getIdx(i, j)] = 1 / std::sqrt(e);
-                }
                 }
             }
         }
@@ -382,10 +386,10 @@ void Solver::kernel1D_applyPreconditionerBackward(int _size) {
                 if (i >= 0 && j >= 0 && i < size && j < size) {
                     if (spaceTypes[getIdx(i, j)] == Fluid) {
                         float t = q[getIdx(i, j)]
-                                   - pressX[getIdx(i, j)]
-                                     * preconditioner[getIdx(i, j)] * z[getIdx(i + 1, j)]
-                                   - pressY[getIdx(i, j)]
-                                     * preconditioner[getIdx(i, j)] * z[getIdx(i, j + 1)];
+                                  - pressX[getIdx(i, j)]
+                                    * preconditioner[getIdx(i, j)] * z[getIdx(i + 1, j)]
+                                  - pressY[getIdx(i, j)]
+                                    * preconditioner[getIdx(i, j)] * z[getIdx(i, j + 1)];
                         z[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
                     }
                 }
@@ -407,10 +411,10 @@ void Solver::kernel1D_applyPreconditionerForward(
                 if (i >= 0 && j >= 0 && i < size && j < size) {
                     if (spaceTypes[getIdx(i, j)] == Fluid) {
                         float t = pressureResidual[getIdx(i, j)]
-                                   - pressX[getIdx(i - 1, j)]
-                                     * preconditioner[getIdx(i - 1, j)] * q[getIdx(i - 1, j)]
-                                   - pressY[getIdx(i, j - 1)]
-                                     * preconditioner[getIdx(i, j - 1)] * q[getIdx(i, j - 1)];
+                                  - pressX[getIdx(i - 1, j)]
+                                    * preconditioner[getIdx(i - 1, j)] * q[getIdx(i - 1, j)]
+                                  - pressY[getIdx(i, j - 1)]
+                                    * preconditioner[getIdx(i, j - 1)] * q[getIdx(i, j - 1)];
                         q[getIdx(i, j)] = t * preconditioner[getIdx(i, j)];
                     }
                 }
@@ -437,8 +441,8 @@ void Solver::kernel2D_applyPressureMatrix(int h, int w) {
     }
 }
 
-void Solver::kernel1D_dotProduct(int _size, float *first, float *second) {
-    for (int i = 0; i < _size; ++i) {
+void Solver::kernel1D_dotProduct(int size, float *first, float *second) {
+    for (int i = 0; i < size; ++i) {
         dotResult += first[i] * second[i];
     }
 }
@@ -673,10 +677,10 @@ Solver::kernel1D_advectParticles(int _size, float *_diff_vx, float *_diff_vy, fl
 
 
         float vx_interpolated = interpolate(_diff_vx[getIdx(x, y)], _diff_vx, particles[i].pos_x / _dx,
-                                             particles[i].pos_y / _dx, x, y, _dx, size);
+                                            particles[i].pos_y / _dx, x, y, _dx, size);
         float vy_interpolated = interpolate(_diff_vy[getIdx(x, y)], _diff_vy, particles[i].pos_x / _dx,
-                                             particles[i].pos_y / _dx, x,
-                                             y, _dx, size);
+                                            particles[i].pos_y / _dx, x,
+                                            y, _dx, size);
         particles[i].vx = alpha * (_vx[getIdxX(x, y)] + _vx[getIdxX(x + 1, y)]) / 2 +
                           (1 - alpha) * (particles[i].vx + vx_interpolated);
         particles[i].vy =
@@ -746,7 +750,7 @@ void Solver::kernel1D_createAdditionalSolid(int _size, int *indices, int *_space
 }
 
 void Solver::kernel1D_changeParticlesSize(int t) {
-    particles.resize(particlesSize);
+    particles.resize(0);
     for (int i = 0; i < t; ++i) {
         Particle p;
         particles.push_back(p);

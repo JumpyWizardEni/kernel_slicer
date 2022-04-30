@@ -28,7 +28,7 @@ struct ConfParams {
 using f = std::function<void(Configuration &a1, ConfParams &a2)>;
 
 enum class ConfigurationName {
-    TwoVerticals, BasketSolid, AddWater, CircleWater, Stair, SmallHole, CircleWall, CircleGridSolid
+    TwoVerticals, BasketSolid, AddWater, CircleWater, Stair, SmallHole, CircleWall, CircleGridSolid, Simple
 };
 
 class ConfigurationBuilder {
@@ -52,9 +52,12 @@ private:
 
     static void circleGridSolid(Configuration &conf, ConfParams &params);
 
+    static void simple(Configuration &conf, ConfParams &params);
+
     static void setParametersToConf(Configuration &conf, vector<std::pair<int, int>> &waterIndices,
                                     vector<std::pair<int, int>> &additionalWaterIndices,
                                     vector<int> &solidIndices, ConfParams &params);
+
 
 public:
 

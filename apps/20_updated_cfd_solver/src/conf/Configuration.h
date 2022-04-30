@@ -67,8 +67,6 @@ public:
     void countSpaceTypes();
 
     int roundValue(int from, int to, double value);
-
-    void checkValues(vector<Solver::Particle> &particles);
 };
 
 

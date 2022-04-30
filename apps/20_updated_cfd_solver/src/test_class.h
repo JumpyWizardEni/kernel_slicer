@@ -27,7 +27,6 @@ public:
     const int Fluid = 2;
 
     int size = 0; // Количество ячеек по одному направлению
-    int particlesSize = 0;
     float dotResult = 0;
     vector<Particle> particles;
     vector<GridPICInfo> gridInfo;
@@ -41,8 +40,8 @@ public:
     int particles_pressure_coef = 10;//10
     float maximum_vel = 0.0;
 
-    int overlap = 0;
-    int sub_domains = 1;
+    int overlap = 6;
+    int sub_domains = 10;
     int subgrid_size = 0;
 
     vector<int> isEnd;
@@ -80,7 +79,7 @@ public:
     virtual void CommitDeviceData() {}                                       // will be overriden in generated class
     virtual void GetExecutionTime(const char* a_funcName, float a_out[4]) {} // will be overriden in generated class
 
-    virtual void performStep(int pSize, const Particle *input __attribute__((size("pSize"))), Particle *output __attribute__((size("pSize"))));
+    virtual void performStep(int pSize, const Particle *input, Particle *output);
 
     //dt <= 5 * dx / max(скорость) на каждом шаге
     void kernel1D_countTimeDelta(int _size, float *p_vx, float *p_vy);

@@ -15,6 +15,7 @@ ConfigurationBuilder::ConfigurationBuilder(ConfParams newParams) {
     configurations[ConfigurationName::SmallHole] = smallHole;
     configurations[ConfigurationName::CircleWall] = circleWall;
     configurations[ConfigurationName::CircleGridSolid] = circleGridSolid;
+    configurations[ConfigurationName::Simple] = simple;
 
 }
 
@@ -46,15 +47,15 @@ void ConfigurationBuilder::twoVerticalLinesWithCenterWall(Configuration &conf, C
     }
 
     vector<int> solid_indices = {};
-    for (int i = 1; i < grid_num - 1; ++i) {
-        for (int j = 1; j < grid_num - 1; ++j) {
-
-            if (j > round(grid_num * 0.5) && (j < round(grid_num * 0.99)) &&
-                ((i > round(grid_num * 0.45) && i < round(grid_num * 0.55)))) {
-                solid_indices.push_back(i + j * grid_num);
-            }
-        }
-    }
+//    for (int i = 1; i < grid_num - 1; ++i) {
+//        for (int j = 1; j < grid_num - 1; ++j) {
+//
+//            if (j > round(grid_num * 0.5) && (j < round(grid_num * 0.99)) &&
+//                ((i > round(grid_num * 0.45) && i < round(grid_num * 0.55)))) {
+//                solid_indices.push_back(i + j * grid_num);
+//            }
+//        }
+//    }
 
     std::vector<std::pair<int, int>> additionalIndices = {};
 
@@ -288,5 +289,21 @@ void ConfigurationBuilder::circleGridSolid(Configuration &conf, ConfParams &para
             }
         }
     }
+    setParametersToConf(conf, waterIndices, additionalWater, solidIndices, params);
+}
+
+void ConfigurationBuilder::simple(Configuration &conf, ConfParams &params) {
+    std::vector<std::pair<int, int>> waterIndices = {};
+    int grid_num = params.grid_num;
+    for (int x = 1; x < grid_num - 1; ++x) {
+        for (int y = 1; y < grid_num - 1; ++y) {
+            if (x >= round(grid_num * 0.5) && x <= round (grid_num * 0.7) && y >= round(grid_num * 0.5) && y <= round (grid_num * 0.7))   {
+                waterIndices.emplace_back(x, y);
+            }
+        }
+    }
+    std::vector<std::pair<int, int>> additionalWater = {};
+
+    std::vector<int> solidIndices = {};
     setParametersToConf(conf, waterIndices, additionalWater, solidIndices, params);
 }
