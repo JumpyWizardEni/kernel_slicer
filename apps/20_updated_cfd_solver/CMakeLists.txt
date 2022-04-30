@@ -64,11 +64,10 @@ set(VKUTILS_NEW_SRC ../vkutils/vk_copy.cpp
 
 add_executable(testapp
         src/test_class.cpp
-        src/main.cpp
         include/stb_image_write.h
         src/render/SimpleRenderer.cpp
         src/conf/Configuration.cpp src/conf/Configuration.h src/render/VulkanRender.cpp src/render/VulkanRender.h src/render/IRenderer.h src/conf/ConfigurationBuilder.cpp src/conf/ConfigurationBuilder.h
-        src/test_class_generated.cpp src/test_class_generated.h src/test_class_generated_ds.cpp src/test_class_generated_init.cpp ${VKUTILS_NEW_SRC})
+        src/test_class_generated.cpp src/test_class_generated.h src/test_class_generated_ds.cpp src/test_class_generated_init.cpp ${VKUTILS_NEW_SRC} src/main.cpp)
 
 set_target_properties(testapp PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 target_link_libraries(testapp LINK_PUBLIC ${Vulkan_LIBRARY} OpenMP::OpenMP_CXX volk dl glfw)

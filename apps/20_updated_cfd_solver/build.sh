@@ -9,4 +9,7 @@ mv src/include/Solver_ubo.h include/
 cd shaders_generated
 bash build.sh
 cd ../
+rm CMAkeCache.txt
+cmake .
+make clean
 make -j 10

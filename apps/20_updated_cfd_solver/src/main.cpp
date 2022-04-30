@@ -2,7 +2,7 @@
 #include "src/conf/Configuration.h"
 
 int main() {
-    ConfParams params = ConfParams(1, 5, 100,
+    ConfParams params = ConfParams(1, 5, 32,
                                    3, 4, 100, 50);
 
     //CPU
