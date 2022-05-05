@@ -3,7 +3,7 @@
 
 int main() {
     ConfParams params = ConfParams(1, 5, 32,
-                                   30, 4, 100, 50);
+                                   50, 4, 100, 50);
 
     //CPU
     {

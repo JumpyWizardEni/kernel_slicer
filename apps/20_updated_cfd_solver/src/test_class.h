@@ -98,7 +98,7 @@ public:
 
     float getVelocityY(float *vy, int i, int j);
 
-    void kernel1D_dotProduct(int _size, float *first, float *second);
+    void kernel1D_dotProduct(int _size, float *first, float *second, int realSize);
 
     float pow(float value);
 
@@ -168,11 +168,22 @@ public:
 
     void kernel1D_checkZeroRhs(int _size);
 
-    void kernel1D_changePressure(int _size, float alpha);
+    void kernel1D_changePressure(int _size);
 
     void kernel1D_sygma(int i);
 
     float sygma;
+
+    void kernel1D_alpha(int i);
+
+    float alpha;
+
+    void kernel1D_sygmaNew(int i);
+
+    float sygma_new;
+    float beta;
+
+    void kernel1D_sygmaChange(int i);
 };
 
 

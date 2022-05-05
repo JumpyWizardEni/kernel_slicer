@@ -33,7 +33,7 @@ void Solver::setParameters(int grid_num, float _dx, vector<int> &_solid_indices,
     counts.resize(size * size, 0);
     vx.resize(size * (size + 1), 0);
     vy.resize(size * (size + 1), 0);
-    isEnd.resize(1, 0);
+    isEnd.resize(2, 0);
     dx = _dx;
     solid_indices = _solid_indices;
     if (solid_indices.size() == 0) {
@@ -141,37 +141,28 @@ void Solver::performStep(int cSize, int pSize, const Particle *input, Particle *
 //
     memcpy(s.data(), z.data(), d_copy);
 //
-    kernel1D_dotProduct(_s, z.data(), pressureResidual.data());
+    kernel1D_dotProduct(1, z.data(), pressureResidual.data(), _s);
     //
-//    kernel1D_sygma(1);
-//    float sygma = dotResult;
-//    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
+    kernel1D_sygma(1);
+    for (int i = 0; i < PCG_MAX_ITERS; ++i) {
 //
+
+        kernel2D_applyPressureMatrix(size, size);
+        kernel1D_dotProduct(1, z.data(), s.data(), _s);
+        kernel1D_alpha(1);
+
+        kernel1D_changePressure(_s);
 //
-//        kernel2D_applyPressureMatrix(size, size);
-//        dotResult = 0.0;
-//
-//        kernel1D_dotProduct(_s, z.data(), s.data());
-//        float alpha = dotResult;
-//
-//        alpha = sygma / alpha;
-//
-//        kernel1D_changePressure(_s, alpha);
-//
-//        kernel1D_applyPreconditionerForward(preconKernel);
-//        kernel1D_applyPreconditionerBackward(preconKernel);
-//        dotResult = 0.0;
-//
-//        kernel1D_dotProduct(_s, z.data(), pressureResidual.data());
-//        float sygma_new = dotResult;
-//
-//        float beta = sygma_new / sygma;
-//
-//        kernel1D_changeSearchVector(_s, beta);
-//
-//        sygma = sygma_new;
-//    }
-//    }
+        kernel1D_applyPreconditionerForward(preconKernel);
+        kernel1D_applyPreconditionerBackward(preconKernel);
+
+        kernel1D_dotProduct(1, z.data(), pressureResidual.data(), _s);
+        kernel1D_sygmaNew(1);
+
+
+        kernel1D_changeSearchVector(_s, beta);
+        kernel1D_sygmaChange(1);
+    }
 //
 //
 //
@@ -193,19 +184,22 @@ void Solver::performStep(int cSize, int pSize, const Particle *input, Particle *
     memcpy(output, particles.data(), pCopySize);
 }
 
-void Solver::kernel1D_changePressure(int _size, float alpha) {
+void Solver::kernel1D_changePressure(int _size) {
+    isEnd[1] = 1;
     for (int j = 0; j < _size; ++j) {
         if (isEnd[0] == 0) {
             pressure[j] += alpha * s[j];
             pressureResidual[j] -= alpha * z[j];
             if (std::abs(pressureResidual[j]) > TOL) {
-                isEnd[0] = 1;
+                isEnd[1] = 0;
             }
         }
     }
+    isEnd[0] = isEnd[1];
 }
 
 void Solver::kernel1D_checkZeroRhs(int _size) {
+    isEnd[0] = 1;
     for (int i = 0; i < _size; ++i) {
         if (std::abs(rhs[i]) > TOL) {
             isEnd[0] = 0;
@@ -441,10 +435,12 @@ void Solver::kernel2D_applyPressureMatrix(int h, int w) {
     }
 }
 
-void Solver::kernel1D_dotProduct(int _size, float *first, float *second) {
+void Solver::kernel1D_dotProduct(int _size, float *first, float *second, int realSize) {
     dotResult = 0.0;
     for (int i = 0; i < _size; ++i) {
-        dotResult += first[i] * second[i];
+    }
+    for (int j = 0; j < realSize;++j) {
+        dotResult += first[j] * second[j];
     }
 }
 
@@ -769,4 +765,24 @@ void Solver::kernel1D_sygma(int i) {
     for (int j = 0; j < i; ++j) {
     }
 
+}
+
+void Solver::kernel1D_alpha(int i) {
+    alpha = sygma / dotResult;
+    for (int j = 0; j < i; ++j) {
+    }
+}
+
+void Solver::kernel1D_sygmaNew(int i) {
+    sygma_new = dotResult;
+
+    beta = sygma_new / sygma;
+    for (int j = 0; j < i; ++j) {
+    }
+}
+
+void Solver::kernel1D_sygmaChange(int i) {
+    sygma = sygma_new;
+    for (int j = 0; j < i; ++j) {
+    }
 }
