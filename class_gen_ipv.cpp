@@ -256,9 +256,12 @@ std::string kslicer::IPV_Pattern::VisitAndRewrite_KF(KernelInfo& a_funcInfo, con
   pVisitor->TraverseDecl(const_cast<clang::CXXMethodDecl*>(a_funcInfo.astNode));
   
   a_funcInfo.shaderFeatures = a_funcInfo.shaderFeatures || pVisitor->GetKernelShaderFeatures(); // TODO: dont work !!!
-  
+  auto b = a_funcInfo.loopOutsidesInit.getBegin();
+  auto e = a_funcInfo.loopOutsidesInit.getEnd().getLocWithOffset(4);
+  auto range = clang::SourceRange(b,e);
+
   if(a_funcInfo.loopOutsidesInit.isValid())
-    a_outLoopInitCode   = rewrite2.getRewrittenText(a_funcInfo.loopOutsidesInit)   + ";";
+    a_outLoopInitCode   = rewrite2.getRewrittenText(range)   + ";";
 
   if(a_funcInfo.loopOutsidesFinish.isValid())  
     a_outLoopFinishCode = rewrite2.getRewrittenText(a_funcInfo.loopOutsidesFinish) + ";";
